@@ -1,0 +1,2149 @@
+# Build a Production-Ready Professional Perfumery Formulation & Olfactory Learning Platform
+
+## 1. Product Vision
+
+I have recently started professional perfumery school and I want to build a serious, long-term digital workspace for learning perfumery, managing raw materials, developing fragrance formulas, documenting experiments, training my olfactory memory, and progressively improving my compositions.
+
+Build a **fast, elegant, minimal, highly intuitive and production-ready cross-platform application** that functions as my personal:
+
+- Perfumery formulation laboratory
+- Raw material database
+- Inventory manager
+- Formula version-control system
+- Olfactory notebook
+- Scent-memory trainer
+- Fragrance-base and accord library
+- Production calculator
+- Regulatory/safety assistant
+- Experimental journal
+- AI olfactory mentor
+- Formula comparison and optimization system
+
+The product should feel like a professional creative laboratory rather than a generic inventory-management application.
+
+The UX should combine the clarity of a modern scientific application with the simplicity and speed of premium productivity software.
+
+Do NOT build only a visual prototype.
+
+Build the underlying architecture, data model, calculation engines, persistence, authentication, synchronization and business logic required for a real application.
+
+---
+
+# 2. Core Product Principles
+
+The application must be:
+
+### Fast
+- Near-instant navigation
+- Optimistic UI where safe
+- Smooth 60 FPS interactions
+- Efficient large-list rendering
+- Fast full-text search
+- Minimal unnecessary network requests
+- Intelligent local caching
+
+### Minimal
+Avoid visual clutter.
+
+Complex perfumery information should be progressively disclosed rather than shown simultaneously.
+
+### Professional
+Formula calculations, versioning, inventory consumption and safety calculations must be deterministic and testable.
+
+### Creative
+The interface should encourage experimentation rather than behave like accounting software.
+
+### Scientific
+Clearly distinguish:
+
+- measured data
+- supplier data
+- regulatory data
+- personal sensory observations
+- AI inference
+- creative suggestions
+
+Never present AI speculation as verified chemical or regulatory information.
+
+### Private by default
+My formulas and experiments are intellectual property and must be private unless I explicitly choose otherwise.
+
+---
+
+# 3. Recommended Technical Architecture
+
+Use current stable technologies.
+
+Preferred architecture:
+
+## Monorepo
+
+Use a monorepo so web, mobile and shared domain logic remain synchronized.
+
+Suggested structure:
+
+```text
+/apps
+  /web
+  /mobile
+
+/packages
+  /domain
+  /formula-engine
+  /safety-engine
+  /database
+  /api
+  /validation
+  /design-tokens
+  /shared-types
+  /ai-context
+```
+
+### Desktop / Web
+
+Use:
+
+- TypeScript
+- React
+- Next.js
+- Responsive PWA architecture
+
+The web application should be optimized primarily as the professional desktop formulation workspace while remaining responsive.
+
+Optionally make it packageable later using Tauri if a native desktop application becomes useful.
+
+### Mobile
+
+Use:
+
+- React Native
+- Expo
+- TypeScript
+
+The mobile app should focus especially on:
+
+- sensory evaluation
+- voice notes
+- quick formula lookup
+- raw material lookup
+- inventory lookup
+- experiment logging
+- scent-memory logging
+- notifications
+
+### Backend
+
+Prefer:
+
+- PostgreSQL
+- Supabase or equivalent PostgreSQL-based backend
+- Google OAuth
+- secure object storage
+- realtime synchronization
+- Row Level Security
+- server-side validation
+
+Formula-related data is highly relational, so prefer a relational database rather than a document-only database.
+
+---
+
+# 4. Authentication & Account System
+
+Authentication should support:
+
+### Primary login
+"Continue with Google"
+
+A single account must give access to the same fragrance workspace from:
+
+- desktop
+- browser
+- Android
+- iOS if supported later
+
+Implement:
+
+- secure OAuth
+- persistent sessions
+- secure refresh token handling
+- secure mobile token storage
+- device session management
+- logout from individual devices
+- account deletion
+- data export
+
+Never expose formulas between user accounts.
+
+Apply database-level Row Level Security.
+
+---
+
+# 5. Main Navigation
+
+Create a highly intuitive navigation system around these areas:
+
+1. Dashboard
+2. Formula Lab
+3. Formula Library
+4. Raw Materials
+5. Inventory
+6. Scent Hierarchy
+7. Olfactory Wheel
+8. Accords & Bases
+9. Experiments
+10. Evaluations
+11. Scent Memory
+12. Olfactory Mentor
+13. Production
+14. Search
+15. Settings
+
+Desktop can use a compact collapsible sidebar.
+
+Mobile should use a simplified navigation hierarchy rather than reproducing the desktop UI exactly.
+
+---
+
+# 6. Main Dashboard
+
+Create a beautiful, minimal dashboard showing useful information rather than decorative analytics.
+
+Possible widgets:
+
+### Current Work
+- formulas currently being developed
+- latest experiments
+- recently modified formulas
+
+### Aging / Maceration
+Show experiments requiring evaluation today.
+
+Examples:
+
+- Day 1
+- Day 3
+- Day 7
+- Day 14
+- Day 30
+
+### Inventory
+- low-stock materials
+- expired materials
+- materials approaching retest date
+
+### Formula Activity
+- recent formula versions
+- evaluations awaiting completion
+
+### Scent Memory
+- recently studied materials
+- materials due for sensory review
+
+### Mentor
+A compact area showing relevant observations or suggested next experiments.
+
+Dashboard widgets should be configurable.
+
+---
+
+# 7. Formula Lab
+
+This is one of the most important parts of the application.
+
+Design a professional fragrance formulation editor.
+
+A formula should contain:
+
+- name
+- project
+- version
+- status
+- description
+- olfactory target
+- intended product
+- intended IFRA/product category when relevant
+- author
+- creation date
+- modification date
+- maturation information
+- ingredients
+- accords
+- comments
+- evaluations
+- production batches
+
+Possible statuses:
+
+- Idea
+- Draft
+- Testing
+- Aging
+- Evaluation
+- Revision
+- Final
+- Archived
+
+---
+
+# 8. Formula Ingredient Editor
+
+Each formula line should support:
+
+- raw material
+- accord/base
+- quantity
+- percentage
+- dilution/concentration
+- active material equivalent
+- unit
+- supplier if applicable
+- lot used in a physical batch
+- cost
+- notes
+
+Primary professional units:
+
+- grams
+- percentages
+
+Additional optional units may be supported, but grams and percentage should remain the authoritative formulation units.
+
+Avoid relying on drops as a scientifically accurate production unit.
+
+---
+
+# 9. Formula Calculation Engine
+
+Create a dedicated deterministic Formula Engine.
+
+It must support:
+
+### Automatic normalization
+
+Ensure formulas can be normalized to:
+
+```text
+100%
+```
+
+### Ratio calculation
+
+### Batch scaling
+
+Example:
+
+A formula developed at 10 g should instantly scale to:
+
+- 25 g
+- 50 g
+- 100 g
+- 250 g
+- 500 g
+- 1 kg
+
+without changing ingredient ratios.
+
+### Dilution awareness
+
+Example:
+
+If Hedione is used neat but another material is stored as:
+
+```text
+Oakmoss Absolute 10% in ethanol
+```
+
+the system should distinguish:
+
+- solution quantity
+- active material quantity
+
+### Nested accords
+
+Allow formulas to contain reusable accords.
+
+Example:
+
+```text
+Formula
+ ├─ Citrus Accord
+ │   ├─ Bergamot
+ │   ├─ Lemon
+ │   └─ Petitgrain
+ │
+ ├─ Hedione
+ └─ Ambroxan
+```
+
+Avoid recursive formula errors.
+
+Detect circular references.
+
+### Cost calculation
+
+Calculate:
+
+- ingredient cost
+- formula cost
+- cost per gram
+- batch cost
+
+when supplier pricing exists.
+
+---
+
+# 10. Formula Target Brief
+
+Before composing a formula, allow me to describe what I am imagining.
+
+Example:
+
+> A transparent green fragrance resembling a wet Mediterranean forest after rain, with airy musky woods and very little sweetness.
+
+Allow the target to include:
+
+- scent families
+- facets
+- intensity
+- texture
+- atmosphere
+- temperature
+- color
+- mood
+- diffusion
+- desired evolution
+- desired drydown
+- inspirations
+- materials to avoid
+
+This brief becomes important context for the AI mentor.
+
+---
+
+# 11. Interactive Olfactory Wheel
+
+Create a beautiful interactive perfumery wheel.
+
+Example families:
+
+- Citrus
+- Green
+- Aromatic
+- Floral
+- Fruity
+- Spicy
+- Woody
+- Mossy
+- Earthy
+- Amber
+- Musky
+- Leather
+- Tobacco
+- Gourmand
+- Marine
+- Mineral
+- Aldehydic
+
+Allow hierarchical sub-facets.
+
+Example:
+
+```text
+Green
+ ├─ Leafy
+ ├─ Grassy
+ ├─ Stemmy
+ ├─ Herbal
+ ├─ Forest
+ └─ Galbanic
+```
+
+I should be able to click a facet and assign an intensity.
+
+Example:
+
+```text
+Green      8/10
+Mossy      5/10
+Earthy     4/10
+Musky      7/10
+Sweet      1/10
+```
+
+Use this system for both:
+
+### Target Profile
+
+What I wanted to create.
+
+### Evaluation Profile
+
+What I actually smelled.
+
+Show both visually so I can compare:
+
+```text
+Intent vs Result
+```
+
+Do not pretend that formula composition can perfectly predict smell.
+
+Any AI-generated predicted profile must be visually identified as an estimate.
+
+---
+
+# 12. Scent Hierarchy Dashboard
+
+Build an intuitive visual hierarchy for organizing fragrance knowledge.
+
+Example:
+
+```text
+Olfactory Family
+    ↓
+Facet
+    ↓
+Sub-Facet
+    ↓
+Raw Material
+    ↓
+Accords
+    ↓
+Formulas
+```
+
+Clicking:
+
+```text
+Green → Forest
+```
+
+could reveal relevant materials such as:
+
+- Fir materials
+- Pine materials
+- Oakmoss materials
+- Violet leaf materials
+- specific woody molecules
+- user-defined materials
+
+Allow users to customize the hierarchy because scent classification is not universally absolute.
+
+---
+
+# 13. Raw Material Library
+
+Create a sophisticated raw material database.
+
+Each material may contain:
+
+### Identity
+
+- material name
+- alternative names
+- CAS number
+- INCI name
+- natural / synthetic
+- supplier
+- supplier product code
+- manufacturer
+
+### Olfactory Information
+
+- primary family
+- facets
+- intensity
+- substantivity
+- diffusion
+- volatility
+- perceived top/heart/base behavior
+- descriptive notes
+- texture
+- temperature impression
+- personal notes
+
+### Technical Information
+
+Where available:
+
+- purity
+- density
+- recommended dilution
+- storage information
+- shelf life
+- flash point
+- relevant SDS documents
+
+### Regulatory Information
+
+Where authoritative data exists:
+
+- allergens
+- restrictions
+- IFRA-related limits
+- source
+- document version
+- effective date
+
+Never invent missing regulatory information.
+
+Unknown should remain:
+
+```text
+Unknown / Not Provided
+```
+
+instead of being inferred by AI.
+
+---
+
+# 14. My Personal Material Experience
+
+The application should gradually build MY personal olfactory profile for every material.
+
+For example:
+
+## Bergamot FCF
+
+### My perception
+- sparkling
+- green peel
+- bitter
+- transparent
+
+### Associated memories
+- Mediterranean summer
+- crushed citrus skin
+
+### Emotions
+- energetic
+- clean
+- optimistic
+
+### Strength
+7/10
+
+### Familiarity
+8/10
+
+### Confidence identifying blind
+6/10
+
+This makes the platform a personal perfumery learning system rather than only a database.
+
+---
+
+# 15. Material Usage Intelligence
+
+For every raw material show:
+
+### Used In
+
+List every formula and accord where I used it.
+
+Example:
+
+```text
+Hedione
+
+Used in:
+Forest Study V2        12%
+White Floral V4        18%
+Green Musk V7           8%
+Tea Experiment V3      15%
+```
+
+Also show my evaluation of how successful the material was in each formulation.
+
+Example:
+
+```text
+Forest Study V2
+Effectiveness: 8/10
+
+Observation:
+Improved transparency but reduced perceived moss depth.
+```
+
+This should allow me to learn from my own historical usage.
+
+---
+
+# 16. Inventory System
+
+Create a proper lot-based inventory system.
+
+Each inventory item should support:
+
+- raw material
+- supplier
+- lot/batch number
+- concentration
+- container size
+- quantity remaining
+- purchase date
+- opened date
+- expiration/retest date
+- price
+- storage location
+- supplier reference
+- notes
+
+Automatically calculate:
+
+- available quantity
+- reserved quantity
+- approximate remaining formulation capacity
+- low-stock warnings
+- expiration/retest warnings
+
+---
+
+# 17. Inventory-Aware Formulation
+
+Inside Formula Lab visually indicate:
+
+```text
+✓ Available
+
+⚠ Low stock
+
+✕ Not available
+```
+
+Before scaling a production batch, calculate whether enough material exists.
+
+Example:
+
+```text
+Requested batch: 500 g
+
+Missing:
+
+Oakmoss 10%
+Required: 14.2 g
+Available: 8.6 g
+Shortage: 5.6 g
+```
+
+Allow the Olfactory Mentor to optionally prioritize substitutions that already exist in my inventory.
+
+---
+
+# 18. Inventory Consumption
+
+When creating a physical batch, do not automatically destroy inventory quantities immediately.
+
+Use a controlled workflow:
+
+```text
+Planned
+→ Weighing
+→ Completed
+→ Inventory Posted
+```
+
+Allow recording actual weighed quantities separately from theoretical quantities.
+
+Maintain a complete stock movement audit trail.
+
+---
+
+# 19. Safety & Regulatory Engine
+
+Create a dedicated Safety Engine separate from the AI mentor.
+
+It may calculate safety limitations only using stored authoritative regulatory data.
+
+Possible inputs:
+
+- raw material
+- concentration
+- formula percentage
+- final product concentration
+- intended product category
+- relevant regulatory source
+
+Show:
+
+```text
+Current Usage
+Maximum Allowed
+Safety Margin
+Source
+Version
+```
+
+Example:
+
+```text
+Material: Example Material
+
+Current concentration: 0.32%
+Maximum supported limit: 0.50%
+
+Status: Within stored limit
+
+Source:
+IFRA document XYZ
+Version: ...
+```
+
+CRITICAL:
+
+Do NOT allow the AI model to fabricate safety limits.
+
+If authoritative safety information is missing, show:
+
+```text
+Safety information unavailable.
+Manual verification required.
+```
+
+The application is an educational and formulation-support tool and must not present itself as a substitute for professional toxicological, regulatory or manufacturing review.
+
+---
+
+# 20. Accords & Fragrance Bases Library
+
+Create a searchable library for:
+
+- my own accords
+- educational accords
+- fragrance bases
+- reusable structural ideas
+
+Possible categories:
+
+- Amber
+- Musk
+- Leather
+- Tobacco
+- Rose
+- Jasmine
+- Green
+- Forest
+- Marine
+- Tea
+- Citrus
+- Woody
+- Incense
+- Chypre
+- Fougere
+
+Each accord can contain:
+
+- description
+- objective
+- ingredients
+- ratios
+- variations
+- olfactory profile
+- usage suggestions
+- my experiments
+- notes
+
+Allow accords to be inserted directly into formulas.
+
+Do not populate the database with proprietary commercial fragrance formulas unless the data is legally licensed or publicly available.
+
+Use original educational examples or user-provided data.
+
+---
+
+# 21. Formula Version Control
+
+Treat formulas similarly to version-controlled creative work.
+
+Example:
+
+```text
+Forest Project
+
+V1
+V2
+V3
+V4
+V5
+```
+
+Never overwrite historical versions.
+
+Allow:
+
+- Save as new version
+- Duplicate
+- Branch experiment
+- Rename version
+- Archive
+- Add version notes
+
+Example branch:
+
+```text
+V5
+ ├─ V5A More Musk
+ ├─ V5B Less Moss
+ └─ V5C More Diffusion
+```
+
+---
+
+# 22. Formula Comparison
+
+Create an excellent visual comparison interface.
+
+Compare any two versions.
+
+Example:
+
+```text
+                V4       V5      Change
+
+Hedione         12%      16%      +4%
+Oakmoss          2%       1%      -1%
+Ambroxan         3%       4%      +1%
+Bergamot         8%       8%       —
+```
+
+Also compare:
+
+- olfactory wheel
+- sensory scores
+- longevity
+- diffusion
+- sweetness
+- texture
+- evaluation notes
+- mentor observations
+
+Highlight modifications clearly.
+
+---
+
+# 23. Experimental Journal
+
+Every experiment should have a chronological timeline.
+
+Example:
+
+```text
+Day 0
+Mixed formula.
+
+15 min
+Opening feels too herbal.
+
+2 h
+Green structure improving.
+
+24 h
+Musk appears smoother.
+
+Day 7
+Oakmoss dominates less than before.
+
+Day 30
+Final drydown is much more integrated.
+```
+
+Each observation must remain linked to:
+
+- formula
+- formula version
+- physical batch
+- date/time
+
+---
+
+# 24. Evaluation Templates
+
+Allow customizable evaluation checkpoints such as:
+
+- Immediately
+- 5 minutes
+- 15 minutes
+- 30 minutes
+- 1 hour
+- 2 hours
+- 4 hours
+- 8 hours
+- 24 hours
+- several days after maturation
+
+Evaluate dimensions such as:
+
+- opening
+- heart
+- drydown
+- diffusion
+- projection
+- longevity
+- balance
+- transparency
+- texture
+- naturalness
+- complexity
+- sweetness
+- freshness
+- dryness
+- warmth
+- originality
+- target match
+
+Allow custom dimensions.
+
+---
+
+# 25. Voice Notes
+
+On mobile, provide an extremely fast:
+
+```text
+Hold to Record
+```
+
+workflow.
+
+Convert speech to text where supported.
+
+Store:
+
+- audio file
+- transcription
+- timestamp
+- formula
+- version
+- batch
+- evaluation stage
+
+Example:
+
+> 43 minutes after application. Green opening has softened significantly. Cedar now feels too dry.
+
+Allow text correction after transcription.
+
+---
+
+# 26. Scent Memory System
+
+Create a dedicated training system for olfactory learning.
+
+For materials and accords store:
+
+- memories
+- emotions
+- mental images
+- places
+- colors
+- textures
+- temperatures
+- associations
+- familiarity
+- identification confidence
+
+Build statistics over time.
+
+Example:
+
+```text
+Material Recognition
+
+Bergamot       87%
+Hedione        74%
+Vetiver        91%
+Cashmeran      58%
+```
+
+Recognition data must come from actual user training/evaluation records rather than fabricated AI scores.
+
+---
+
+# 27. Olfactory Mentor
+
+Build an AI-assisted mentor deeply integrated with the application.
+
+The mentor must understand the context of:
+
+- current formula
+- current version
+- previous versions
+- target brief
+- ingredient properties
+- my inventory
+- my previous sensory evaluations
+- my personal material memories
+- my historical ingredient usage
+- maturation observations
+
+I should be able to say:
+
+> The opening is exactly what I want, but after one hour the composition becomes too dry and woody. I want the drydown softer and more airy without increasing sweetness.
+
+The mentor should analyze the current composition and propose controlled experiments.
+
+For example:
+
+```text
+Experiment A
+Reduce Material X from 4% → 2.5%
+
+Reason:
+Your previous evaluations indicate that this material contributed strongly to dryness.
+
+Experiment B
+Increase Material Y from 8% → 10%
+
+Reason:
+It may increase floral diffusion without substantially increasing sweetness.
+```
+
+---
+
+# 28. Mentor Reasoning Categories
+
+Mentor responses should clearly label suggestions as:
+
+### Olfactory
+Expected sensory effect.
+
+### Structural
+Expected impact on balance, diffusion or development.
+
+### Experimental
+Worth testing but uncertain.
+
+### Stability
+Potential physical/chemical stability consideration.
+
+### Safety / Regulatory
+Only when supported by authoritative stored data.
+
+Never mix those categories together.
+
+---
+
+# 29. AI Confidence & Evidence
+
+Every important AI recommendation should indicate confidence such as:
+
+```text
+High confidence
+Moderate confidence
+Experimental hypothesis
+```
+
+When appropriate show:
+
+```text
+Why I am suggesting this
+```
+
+using evidence such as:
+
+- material properties
+- my previous evaluations
+- previous formula versions
+- current formula structure
+
+The AI must not pretend olfactory outcomes are deterministic.
+
+---
+
+# 30. Controlled AI Experiment Suggestions
+
+The mentor should favor small, testable modifications rather than arbitrarily rewriting formulas.
+
+Example:
+
+Instead of:
+
+> Replace six ingredients.
+
+Prefer:
+
+```text
+Create three 10 g trials:
+
+A — Control
+Current V6
+
+B — Softer drydown
+Cashmeran -1.5%
+Hedione +1.5%
+
+C — More diffusion
+Hedione +2%
+Iso E Super -2%
+```
+
+This helps teach perfumery scientifically.
+
+Never modify the master formula automatically.
+
+The user must explicitly apply recommendations.
+
+---
+
+# 31. Complementary Material Suggestions
+
+When viewing a note, facet or raw material provide:
+
+```text
+Potential Complements
+```
+
+Suggestions may be based on:
+
+- olfactory theory
+- traditional structures
+- historical user experiments
+- inventory availability
+
+Examples:
+
+```text
+Violet Leaf
+Potential complements:
+
+Bergamot
+Orris
+Cedar
+Transparent musks
+Tea materials
+Moss materials
+```
+
+Explain WHY the combination may work.
+
+Also show potential contrasts rather than only harmonious pairings.
+
+---
+
+# 32. Search
+
+Implement extremely fast global search.
+
+Search across:
+
+- materials
+- formulas
+- formula versions
+- accords
+- experiments
+- evaluations
+- notes
+- suppliers
+- olfactory families
+- facets
+- memories
+
+Support filters.
+
+Example:
+
+```text
+Family: Green
+Facet: Forest
+Available in inventory: Yes
+Natural/Synthetic: Any
+Base-note behavior: Yes
+Used in previous formulas: Yes
+```
+
+Provide keyboard-first search on desktop.
+
+Consider a command palette such as:
+
+```text
+Ctrl/Cmd + K
+```
+
+---
+
+# 33. Formula Library
+
+Create a visual library containing everything I have created.
+
+Support:
+
+- cards
+- compact table
+- favorites
+- tags
+- collections
+- projects
+- archived formulas
+
+Each formula card can show:
+
+- name
+- version
+- status
+- dominant facets
+- last modified
+- score
+- maturation status
+
+---
+
+# 34. Production Mode
+
+Create a distraction-free Production / Weighing Mode.
+
+Example:
+
+```text
+Formula: Green Forest V8
+Batch: 100 g
+
+1. Bergamot
+Required: 8.432 g
+Actual: [____]
+
+2. Hedione
+Required: 14.200 g
+Actual: [____]
+
+3. Oakmoss 10%
+Required: 1.840 g
+Actual: [____]
+```
+
+Allow actual weighed quantity entry.
+
+Show deviation.
+
+Example:
+
+```text
+Target: 1.840 g
+Actual: 1.846 g
+Deviation: +0.006 g
+```
+
+Record lot numbers.
+
+Allow pausing and resuming a batch safely.
+
+---
+
+# 35. Export
+
+Allow formula export as:
+
+### CSV
+
+At minimum:
+
+```text
+Ingredient
+Percentage
+Concentration
+Target Weight
+Unit
+Supplier
+Lot
+Notes
+```
+
+Also design architecture to support:
+
+- printable formula sheet
+- production worksheet
+- PDF
+- JSON backup
+
+Export should include formula version metadata.
+
+---
+
+# 36. Cloud Synchronization
+
+Changes must sync seamlessly across devices.
+
+Example:
+
+I edit formula V7 on desktop.
+
+A few seconds later I open my phone.
+
+V7 must appear there.
+
+Design proper synchronization rather than simply refreshing the database.
+
+Support:
+
+- local cache
+- offline edits
+- queued mutations
+- retry
+- synchronization status
+- conflict handling
+
+Never silently overwrite conflicting formula edits.
+
+If a conflict occurs, preserve both versions or provide explicit conflict resolution.
+
+---
+
+# 37. Offline-First Mobile Behavior
+
+Mobile should remain useful without internet access.
+
+Allow offline access to:
+
+- favorite formulas
+- recent formulas
+- inventory
+- raw materials
+- current experiments
+- notes
+
+Offline changes should synchronize after connectivity returns.
+
+Display sync state discreetly.
+
+---
+
+# 38. Notifications
+
+Optional notifications:
+
+```text
+Forest V5
+7-day evaluation is due.
+```
+
+```text
+Oakmoss Absolute
+Inventory below configured threshold.
+```
+
+```text
+Tea Accord V3
+30-day maturation evaluation is ready.
+```
+
+Notifications should be configurable.
+
+---
+
+# 39. Dark Mode
+
+Implement:
+
+- Light Mode
+- Dark Mode
+- System Mode
+
+Dark mode must be intentionally designed rather than produced by simply inverting colors.
+
+Use excellent contrast and avoid overly bright accents during nighttime formulation sessions.
+
+---
+
+# 40. Visual Design Direction
+
+Style:
+
+- minimal
+- sophisticated
+- calm
+- scientific
+- tactile
+- premium
+- contemporary
+
+Avoid:
+
+- excessive gradients
+- glassmorphism everywhere
+- oversized cards
+- childish fragrance graphics
+- unnecessary animations
+- dashboard clutter
+- rainbow-colored interfaces
+
+Use restrained visual hierarchy.
+
+Fragrance-family colors may exist, but should be subtle.
+
+Typography should prioritize long-session readability.
+
+---
+
+# 41. Interaction Design
+
+Optimize desktop workflows for keyboard and mouse.
+
+Examples:
+
+```text
+Cmd/Ctrl + K
+Global Search
+
+Cmd/Ctrl + S
+Save Formula
+
+Cmd/Ctrl + Shift + S
+Save New Version
+```
+
+Use:
+
+- autosave for notes
+- undo/redo where appropriate
+- keyboard navigation
+- contextual menus
+- drag-and-drop carefully
+
+Never use drag-and-drop as the only interaction method.
+
+---
+
+# 42. Accessibility
+
+Target modern accessibility best practices.
+
+Include:
+
+- keyboard navigation
+- screen reader labels
+- sufficient color contrast
+- clear focus states
+- scalable typography
+- accessible charts
+- reduced-motion support
+
+Do not encode olfactory categories using color alone.
+
+---
+
+# 43. Core Data Model
+
+Design a normalized relational schema.
+
+At minimum consider entities similar to:
+
+```text
+users
+
+profiles
+
+materials
+material_aliases
+material_facets
+material_documents
+material_regulatory_limits
+
+suppliers
+
+inventory_lots
+inventory_movements
+
+formulas
+formula_versions
+formula_version_items
+
+accords
+accord_versions
+accord_version_items
+
+projects
+
+batches
+batch_items
+
+experiments
+
+evaluations
+evaluation_entries
+
+sensory_notes
+voice_notes
+
+olfactory_families
+olfactory_facets
+
+scent_memories
+emotional_associations
+
+material_usage_reviews
+
+mentor_sessions
+mentor_recommendations
+
+attachments
+
+tags
+entity_tags
+
+sync_metadata
+
+audit_log
+```
+
+Use proper foreign keys.
+
+Avoid storing important relational structures inside arbitrary JSON unless flexibility genuinely requires it.
+
+Use immutable IDs.
+
+Use created_at / updated_at timestamps consistently.
+
+---
+
+# 44. Versioning Model
+
+Formula versions must be immutable after they are formally committed.
+
+Editing a committed version should create:
+
+```text
+New Draft
+```
+
+rather than modify historical data.
+
+Support lineage:
+
+```text
+Formula
+  ↓
+Version 1
+  ↓
+Version 2
+  ↓
+Version 3
+      ├── Version 3A
+      └── Version 3B
+```
+
+Store parent_version_id when appropriate.
+
+---
+
+# 45. Calculation Integrity
+
+Formula and safety calculations must not depend on UI components.
+
+Put calculation logic inside dedicated tested domain packages.
+
+Examples:
+
+```text
+formula-engine
+safety-engine
+inventory-engine
+batch-engine
+```
+
+The same calculation code or equivalent validated service should power desktop and mobile.
+
+Use decimal-safe arithmetic for formulation calculations rather than naïve floating-point calculations where rounding errors could materially affect results.
+
+---
+
+# 46. Validation
+
+Implement validation for cases such as:
+
+- formula percentage > 100
+- negative quantity
+- missing concentration
+- impossible batch quantity
+- unavailable inventory
+- nested accord circular reference
+- invalid unit conversion
+- missing safety source
+- expired inventory
+- duplicated lot identifiers where inappropriate
+
+Errors should be understandable to perfumers, not database engineers.
+
+---
+
+# 47. Performance Requirements
+
+Architect for thousands of:
+
+- materials
+- formulas
+- versions
+- sensory notes
+- inventory movements
+
+without degrading the experience.
+
+Use:
+
+- indexed database fields
+- paginated queries
+- virtualized tables
+- local caching
+- lazy loading
+- optimized images
+- minimal client bundle size
+
+Avoid fetching the entire database on application startup.
+
+---
+
+# 48. Security
+
+Treat formulas as valuable private intellectual property.
+
+Implement:
+
+- HTTPS only
+- Row Level Security
+- strict authorization
+- secure token storage
+- encrypted transport
+- safe secrets management
+- server-side validation
+- rate limiting where required
+- input sanitization
+- secure file uploads
+- audit logging for sensitive changes
+
+Never expose service-role credentials to clients.
+
+Private formulas must never be used for training external AI systems without explicit user consent.
+
+Provide clear controls over what context is sent to AI services.
+
+---
+
+# 49. Backup & Data Ownership
+
+My data must remain portable.
+
+Provide:
+
+- CSV export
+- formula export
+- full account archive
+- backup strategy
+- restore strategy
+
+Allow account deletion and associated data deletion.
+
+Do not create vendor lock-in for my formulation records.
+
+---
+
+# 50. Google Play Readiness
+
+The Android application should be architected to satisfy the latest applicable Google Play requirements at release time.
+
+Prepare for:
+
+- signed Android App Bundle
+- current required Android target SDK
+- secure network communication
+- proper permissions
+- minimal permission requests
+- privacy policy
+- Data Safety disclosures
+- account deletion workflow
+- secure credential storage
+- crash reporting
+- production build configuration
+
+Microphone permission should only be requested when the user explicitly chooses voice recording.
+
+Do not request unrelated device permissions.
+
+---
+
+# 51. Testing Strategy
+
+Create automated tests for critical business logic.
+
+### Unit Tests
+
+Especially:
+
+- formula normalization
+- batch scaling
+- dilution calculation
+- nested accords
+- inventory consumption
+- cost calculation
+- regulatory limit calculations
+- unit conversions
+- version creation
+
+### Integration Tests
+
+Test:
+
+- authentication
+- database access
+- formula save
+- inventory update
+- version comparison
+- cloud sync
+
+### End-to-End Tests
+
+Test flows such as:
+
+```text
+Login
+→ Create Formula
+→ Add Materials
+→ Save Version
+→ Create Batch
+→ Add Evaluation
+→ Compare Version
+→ Export CSV
+```
+
+---
+
+# 52. Seed Data
+
+Provide a small, clearly labeled educational seed dataset so the app is usable immediately.
+
+Include examples of:
+
+- synthetic materials
+- natural materials
+- accords
+- formula
+- formula versions
+- evaluations
+- inventory lots
+
+Seed regulatory values must either come from legitimate sourced data or be clearly labeled as DEMO DATA that cannot be used for real safety decisions.
+
+---
+
+# 53. UX Empty States
+
+Do not leave empty screens unexplained.
+
+Example:
+
+Instead of:
+
+```text
+No formulas.
+```
+
+Use:
+
+```text
+Your fragrance library is empty.
+
+Create your first formula or start from an educational accord.
+```
+
+Provide an obvious action.
+
+---
+
+# 54. Onboarding
+
+Create a short onboarding process.
+
+Ask:
+
+- experience level
+- preferred units
+- main fragrance interests
+- whether I want educational prompts
+- whether I want safety features enabled
+- dark/light theme
+
+Then optionally guide me through:
+
+```text
+Add first material
+→ Create first formula
+→ Record first evaluation
+```
+
+Do not create a long mandatory onboarding wizard.
+
+---
+
+# 55. Progressive Learning
+
+Because I am studying perfumery, optionally show educational context.
+
+For example when viewing Hedione:
+
+```text
+Things to observe
+
+• Diffusion
+• Floral transparency
+• Relationship with jasmine materials
+• Effect at different concentrations
+```
+
+Allow educational hints to be disabled.
+
+---
+
+# 56. Future Extensibility
+
+Design the architecture so later versions can add:
+
+- barcode / QR inventory labels
+- supplier integrations
+- scale integration
+- chromatography attachments
+- advanced analytics
+- collaborative projects
+- instructor accounts
+- classroom mode
+- blind-smelling exercises
+- spaced-repetition olfactory training
+- ingredient recommendation models
+- local/on-device AI
+- community accord sharing
+
+Do not implement unnecessary future functionality now, but avoid architecture that prevents it.
+
+---
+
+# 57. Product Analytics
+
+If analytics are implemented, collect only minimal product-usage telemetry.
+
+Never send:
+
+- formula composition
+- private sensory notes
+- proprietary ingredient ratios
+
+to analytics providers.
+
+Allow analytics opt-out.
+
+---
+
+# 58. Development Priorities
+
+Prioritize correctness and usability over feature count.
+
+Development priority:
+
+## Phase 1 — Foundation
+
+- architecture
+- authentication
+- database
+- design system
+- raw material library
+- inventory
+- formula editor
+- formula engine
+
+## Phase 2 — Professional Formulation
+
+- versions
+- formula comparison
+- accords
+- batch production
+- sensory evaluations
+- exports
+
+## Phase 3 — Olfactory Intelligence
+
+- scent hierarchy
+- olfactory wheel
+- scent memory
+- usage intelligence
+- experiments
+
+## Phase 4 — Mentor
+
+- context-aware AI mentor
+- experimental recommendations
+- complementary-material suggestions
+- historical learning from my evaluations
+
+## Phase 5 — Cross-Device Product
+
+- mobile application
+- offline mode
+- synchronization
+- voice notes
+- notifications
+
+## Phase 6 — Production Hardening
+
+- testing
+- security review
+- performance optimization
+- backup and recovery
+- accessibility
+- Google Play readiness
+
+---
+
+# 59. Critical Acceptance Criteria
+
+The product is NOT considered complete merely because the screens look polished.
+
+A successful implementation must allow me to perform this complete workflow:
+
+```text
+Sign in with Google
+
+→ Add a raw material
+
+→ Add the material to inventory
+
+→ Create a fragrance project
+
+→ Define an olfactory target
+
+→ Build a formula
+
+→ See formula percentages update correctly
+
+→ Scale the formula to a physical batch
+
+→ Check inventory availability
+
+→ Save Formula V1
+
+→ Produce a physical batch
+
+→ Record actual weighed amounts
+
+→ Record a voice/text sensory evaluation
+
+→ Wait or simulate another evaluation stage
+
+→ Modify the composition
+
+→ Save Formula V2
+
+→ Compare V1 and V2
+
+→ See where each raw material has previously been used
+
+→ Ask the Mentor how to move V2 closer to my target
+
+→ Create a controlled experimental branch from that suggestion
+
+→ Export the production formula to CSV
+
+→ Open the same account on mobile
+
+→ See the synchronized formula, batch and evaluation history
+```
+
+All of this must work with persistent real data.
+
+---
+
+# 60. Deliverables
+
+Do not return only screenshots or frontend components.
+
+Deliver:
+
+1. Working application
+2. Full source code
+3. Database schema
+4. Database migrations
+5. Seed data
+6. Authentication implementation
+7. Formula calculation engine
+8. Inventory engine
+9. Version-control implementation
+10. Responsive desktop workspace
+11. Mobile-ready architecture/application
+12. API/service layer
+13. Automated tests
+14. Environment configuration example
+15. README
+16. setup instructions
+17. architecture documentation
+18. deployment instructions
+19. security notes
+20. Google Play release-readiness checklist
+
+---
+
+# 61. Engineering Rules
+
+Follow these rules during implementation:
+
+- Use TypeScript strictly.
+- Avoid `any` unless unavoidable.
+- Separate domain logic from UI.
+- Use schema validation for external input.
+- Prefer explicit domain models.
+- Do not hardcode example data into production components.
+- Do not implement fake buttons.
+- Do not leave critical flows as placeholders.
+- Do not generate random AI data to fill missing scientific fields.
+- Do not silently modify historical formulas.
+- Do not overwrite user data during sync conflicts.
+- Do not invent regulatory values.
+- Do not let AI modify formulas without explicit approval.
+- Keep the UI simple even when the underlying architecture is sophisticated.
+- Build reusable components.
+- Keep the codebase documented and maintainable.
+- Favor correctness over clever abstractions.
+- Avoid unnecessary microservices.
+- Avoid premature overengineering.
+
+---
+
+# 62. Final Product Goal
+
+The final application should feel like a combination of:
+
+- a perfumer's laboratory notebook
+- a scientific formulation tool
+- a raw-material encyclopedia
+- an inventory system
+- a version-control system
+- an olfactory training journal
+- a creative fragrance workspace
+- and a knowledgeable AI perfumery mentor
+
+But it should still feel like ONE unified product.
+
+My goal is to use this application throughout perfumery school and continue using it later as my professional personal fragrance-development environment.
+
+The system should become more useful over time because it accumulates MY:
+
+- formulas
+- experiments
+- ingredient experience
+- sensory vocabulary
+- scent memories
+- successes
+- failures
+- preferences
+- formulation history
+
+The final experience should be:
+
+**fast, elegant, minimal, scientifically responsible, deeply personal and genuinely useful for professional fragrance development.**
+
+Before implementing UI screens, first define:
+
+1. system architecture
+2. domain model
+3. database schema
+4. formula/versioning architecture
+5. synchronization strategy
+6. safety architecture
+7. AI mentor context architecture
+
+Then implement the application incrementally without breaking those foundations.
+
+When a design decision conflicts with data integrity, formulation correctness or maintainability, prioritize correctness first and find a UX solution that preserves simplicity.

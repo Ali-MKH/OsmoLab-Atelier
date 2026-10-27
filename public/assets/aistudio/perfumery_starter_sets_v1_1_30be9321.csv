@@ -1,0 +1,67 @@
+﻿facet_set,rank,tier,material_name,why_recommended,shelf_action,regulatory_action,pyramid_usage,pyramid_ui_code,pyramid_confidence
+Citrus / Bright,1,essential,Bergamot oil (expressed),complex citrus top with green/floral structure,Suggest if not on My Shelf,Check material regulatory record before formula use,top,T,high
+Citrus / Bright,2,essential,Lemon oil (steam distilled),clean lemon brightness,Suggest if not on My Shelf,Check material regulatory record before formula use,top,T,high
+Citrus / Bright,3,essential,Grapefruit oil,bitter sparkling citrus contrast,Suggest if not on My Shelf,Check material regulatory record before formula use,top,T,high
+Citrus / Bright,4,core,Mandarin oil (red),soft rounded sweet citrus,Suggest if not on My Shelf,Check material regulatory record before formula use,top,T,high
+Citrus / Bright,5,core,Petitgrain bigarade oil,connects citrus to green/aromatic heart,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Citrus / Bright,6,core,Linalool,fresh floral-citrus bridge,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Citrus / Bright,7,core,Linalyl acetate,soft lavender/bergamot freshness,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Green / Leafy,1,essential,(Z)-3-Hexenol,cut-grass reference material,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Green / Leafy,2,essential,Stemone,fig-leaf/stem green effect,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Green / Leafy,3,essential,Galbanum oil,classical intense bitter green,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Green / Leafy,4,core,Violet leaf absolute,watery metallic leafy natural,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Green / Leafy,5,core,Spirogalbanone,modern powerful galbanic lift,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Green / Leafy,6,expansion,Petitgrain bigarade oil,green citrus-leaf bridge,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Floral / Jasmine / Muguet,1,essential,Hedione,transparent jasmine diffusion,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Floral / Jasmine / Muguet,2,essential,Linalool,floral freshness and lift,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Floral / Jasmine / Muguet,3,essential,Benzyl salicylate,solar floral volume/fixation,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Floral / Jasmine / Muguet,4,core,Hydroxycitronellal,muguet reference; regulatory limit must be checked,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Floral / Jasmine / Muguet,5,core,Jasmine Grandiflorum absolute,natural jasmine reference,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Floral / Jasmine / Muguet,6,expansion,Jasmine Sambac absolute,greener/tea-like jasmine natural,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Rose / Fruity Floral,1,essential,Geraniol,fresh rosy building block,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Rose / Fruity Floral,2,essential,dl-Citronellol,clean rosy building block,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Rose / Fruity Floral,3,core,Rose absolute (damascena),natural rose reference,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Rose / Fruity Floral,4,core,(E/Z)-Beta-damascone,powerful rosy-fruity modifier; restricted EU group,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Rose / Fruity Floral,5,expansion,Damascenone,trace-level rosy-fruity power; restricted EU group,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Woods / Transparent Amber,1,essential,Iso E Super,transparent diffusive cedar-amber,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Woods / Transparent Amber,2,essential,Ambroxan,dry ambergris/mineral backbone,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Woods / Transparent Amber,3,essential,Cedramber,dry cedar-amber support,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Woods / Transparent Amber,4,core,Cashmeran,warm woody-musky texture,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Woods / Transparent Amber,5,core,Sandalore,soft creamy sandalwood,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Woods / Transparent Amber,6,core,Cedarwood Virginia oil,natural dry cedar reference,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Woods / Transparent Amber,7,expansion,Timberol,high-impact dry woody power,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Woods / Transparent Amber,8,expansion,Javanol,very powerful modern sandalwood,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Musks / Soft Drydown,1,essential,Habanolide,clean airy/metallic macrocyclic musk,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Musks / Soft Drydown,2,essential,Exaltolide,soft skin-like macrocyclic musk,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Musks / Soft Drydown,3,core,Helvetolide,fruity/pear musk for lift,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Musks / Soft Drydown,4,core,Galaxolide,clean rounded musk reference,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Musks / Soft Drydown,5,core,Ambrette seed absolute,botanical musk reference,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Musks / Soft Drydown,6,expansion,Muscone,naturalistic warm musk effect,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Mossy / Earthy / Forest,1,essential,Oakmoss absolute (low atranol & chloratranol),natural moss reference; supplier specification and regulatory verification required,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Mossy / Earthy / Forest,2,essential,Evernyl,clean modern moss effect,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Mossy / Earthy / Forest,3,core,Patchouli oil,earthy woody depth,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Mossy / Earthy / Forest,4,core,Geosmin,trace-level wet-earth realism,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Mossy / Earthy / Forest,5,core,Cedarwood Atlas oil,dry balsamic forest wood,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Mossy / Earthy / Forest,6,expansion,Galbanum oil,bitter green resinous forest contrast,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Resins / Amber,1,essential,Labdanum absolute,dark ambery/leathery resin,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Resins / Amber,2,essential,Siam benzoin resinoid,soft balsamic sweetness,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Resins / Amber,3,core,Olibanum oil,bright mineral incense,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Resins / Amber,4,core,Myrrh oil,dry earthy balsamic resin,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Resins / Amber,5,core,Vanillin,classic vanilla balsamic support,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Resins / Amber,6,expansion,Ethyl vanillin,stronger vanilla accent,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Aromatic / Spicy,1,essential,Lavender oil,aromatic floral reference,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Aromatic / Spicy,2,essential,Clary sage oil,herbal tea/amber link,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Aromatic / Spicy,3,core,Cardamom seed oil,cool green spice,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Aromatic / Spicy,4,core,Juniper berry oil,dry gin/pine aromatic effect,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Aromatic / Spicy,5,core,Black pepper oil,dry peppery lift,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Aromatic / Spicy,6,expansion,Eugenol,clove spice; regulatory limit must be checked,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Marine / Air / Fresh,1,essential,Calone,marine/watery reference,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Marine / Air / Fresh,2,essential,Dihydromyrcenol,high-impact fresh clean lift,Suggest if not on My Shelf,Check material regulatory record before formula use,top-heart,TH,high
+Marine / Air / Fresh,3,core,Hedione,air and diffusion,Suggest if not on My Shelf,Check material regulatory record before formula use,heart,H,high
+Marine / Air / Fresh,4,core,Helvetolide,soft fruity-musky air,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Marine / Air / Fresh,5,expansion,Iso E Super,transparent woody volume,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Tobacco / Dry Balsamic,1,essential,Tobacco absolute,dry leafy tobacco reference,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Tobacco / Dry Balsamic,2,core,Labdanum absolute,resin/leather support,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high
+Tobacco / Dry Balsamic,3,core,Osmanthus absolute,apricot-leather bridge,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Tobacco / Dry Balsamic,4,core,Isoeugenol,smoky clove-wood modifier; strict regulatory limit,Suggest if not on My Shelf,Check material regulatory record before formula use,heart-base,HB,high
+Tobacco / Dry Balsamic,5,expansion,Tonka bean absolute,hay/coumarinic softening; adds sweetness,Suggest if not on My Shelf,Check material regulatory record before formula use,base,B,high

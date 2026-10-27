@@ -1,0 +1,1175 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Vazirmatn', sans-serif;
+    --font-serif: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Vazirmatn', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Inter', ui-monospace, SFMono-Regular, sans-serif;
+    font-size: 15.5px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    line-height: 1.625;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Balanced, readable utility text scale */
+  .text-xs {
+    font-size: 0.795rem !important;
+    line-height: 1.38rem !important;
+  }
+
+  .text-\[11px\] {
+    font-size: 0.745rem !important;
+    line-height: 1.22rem !important;
+  }
+
+  .text-\[10px\] {
+    font-size: 0.7rem !important;
+    line-height: 1.12rem !important;
+  }
+
+  .font-serif-display {
+    font-family: var(--font-sans);
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Support RTL text inputs & form controls */
+  [dir='rtl'] {
+    direction: rtl;
+    text-align: right;
+    font-family: 'Vazirmatn', 'Noto Sans Arabic', sans-serif !important;
+  }
+
+  [dir='rtl'] .font-serif-display {
+    font-family: 'Vazirmatn', 'Noto Sans Arabic', sans-serif !important;
+  }
+
+  [dir='rtl'] input:not([type="number"]),
+  [dir='rtl'] textarea {
+    text-align: right;
+  }
+
+  [dir='ltr'] {
+    direction: ltr;
+    text-align: left;
+  }
+}
+
+/* ==========================================================================
+   6 Curated High-Legibility Olfactory Themes
+   1. noir (Atelier Noir - Obsidian Black, Default Dark)
+   2. parchment (Studio Slate Day Theme - bg-slate-50 #F8FAFC & Pure White #FFFFFF)
+   3. creamy (Creamy Blanc - Warm Alabaster #FAF7F0 & Pure White #FFFFFF)
+   4. cypress (Cypress Forest - Deep Pine & Emerald, Dark)
+   5. grasse (Grasse Atelier - Rosewood & Terracotta, Dark)
+   6. clinical (Clinical Zinc Day Theme - bg-zinc-50 #F4F4F5 & Pure White #FFFFFF)
+   ========================================================================== */
+
+:root,
+[data-theme='noir'] {
+  --color-canvas: #090D14;
+  --color-surface: #111622;
+  --color-surface-elevated: #161D2B;
+  --color-subtle: #0B0E14;
+  --color-border: #1E293B;
+  --color-border-subtle: #16202E;
+  --color-text: #F8FAFC;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #94A3B8;
+  --color-accent: #10B981;
+  --color-accent-hover: #059669;
+  --color-accent-gold: #F59E0B;
+}
+
+/* Studio Slate Day Theme (WCAG 2.1 AA/AAA Off-Black Neutrals on Slate-50 / White) */
+html[data-theme='parchment'],
+[data-theme='parchment'],
+html.light:not([data-theme='creamy']):not([data-theme='clinical']) {
+  --color-canvas: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F1F5F9;
+  --color-subtle: #F1F5F9;
+  --color-border: #CBD5E1;
+  --color-border-subtle: #E2E8F0;
+  --color-text: #0F172A;
+  --color-text-secondary: #1E293B;
+  --color-text-muted: #475569;
+  --color-accent: #047857;
+  --color-accent-hover: #065F46;
+  --color-accent-gold: #B45309;
+}
+
+/* Creamy Theme — Warm Light Cream & Pure White Atelier Aesthetic (WCAG AA/AAA) */
+html[data-theme='creamy'],
+[data-theme='creamy'] {
+  --color-canvas: #FAF7F2;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F5EFE6;
+  --color-subtle: #F3EDE2;
+  --color-border: #D6C9B1;
+  --color-border-subtle: #E4DAC6;
+  --color-text: #0F172A;
+  --color-text-secondary: #1E293B;
+  --color-text-muted: #475569;
+  --color-accent: #047857;
+  --color-accent-hover: #065F46;
+  --color-accent-gold: #9A3412;
+}
+
+html[data-theme='clinical'],
+[data-theme='clinical'] {
+  --color-canvas: #F4F4F5;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F8FAFC;
+  --color-subtle: #EEF2F6;
+  --color-border: #CBD5E1;
+  --color-border-subtle: #E2E8F0;
+  --color-text: #0F172A;
+  --color-text-secondary: #1E293B;
+  --color-text-muted: #475569;
+  --color-accent: #0369A1;
+  --color-accent-hover: #075985;
+  --color-accent-gold: #B45309;
+}
+
+[data-theme='cypress'] {
+  --color-canvas: #04120C;
+  --color-surface: #092016;
+  --color-surface-elevated: #0F2C1F;
+  --color-subtle: #061810;
+  --color-border: #1E4D38;
+  --color-border-subtle: #153B2B;
+  --color-text: #F0FDF4;
+  --color-text-secondary: #BBF7D0;
+  --color-text-muted: #86EFAC;
+  --color-accent: #10B981;
+  --color-accent-hover: #059669;
+  --color-accent-gold: #F59E0B;
+}
+
+[data-theme='grasse'] {
+  --color-canvas: #140C0F;
+  --color-surface: #221418;
+  --color-surface-elevated: #2E1B22;
+  --color-subtle: #190E13;
+  --color-border: #502A38;
+  --color-border-subtle: #3D1F2A;
+  --color-text: #FFF1F2;
+  --color-text-secondary: #FECDD3;
+  --color-text-muted: #FB7185;
+  --color-accent: #F43F5E;
+  --color-accent-hover: #E11D48;
+  --color-accent-gold: #EA580C;
+}
+
+/* ==========================================================================
+   Full Adaptive Surface & Typography Overrides (WCAG 2.1 AA / 4.5:1+ Minimum)
+   ========================================================================== */
+
+/* 1. Daylight Themes: Studio Slate (parchment), Clinical Zinc (clinical), Creamy (creamy) */
+[data-theme='parchment'],
+[data-theme='creamy'],
+[data-theme='clinical'],
+html.light {
+  color-scheme: light;
+  background-color: var(--color-canvas) !important;
+  color: var(--color-text) !important;
+}
+
+[data-theme='parchment'] body,
+[data-theme='creamy'] body,
+[data-theme='clinical'] body,
+html.light body {
+  background-color: var(--color-canvas) !important;
+  color: var(--color-text) !important;
+}
+
+/* Main app shell background */
+[data-theme='parchment'] .min-h-screen.bg-\[\#0B0E14\],
+[data-theme='creamy'] .min-h-screen.bg-\[\#0B0E14\],
+[data-theme='clinical'] .min-h-screen.bg-\[\#0B0E14\],
+html.light .min-h-screen.bg-\[\#0B0E14\] {
+  background-color: var(--color-canvas) !important;
+  color: var(--color-text) !important;
+}
+
+/* Frosted Top Header & Sidebar */
+[data-theme='parchment'] header.bg-\[\#0E121B\],
+[data-theme='clinical'] header.bg-\[\#0E121B\],
+html.light:not([data-theme='creamy']) header.bg-\[\#0E121B\] {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme='creamy'] header.bg-\[\#0E121B\],
+[data-theme='creamy'] header.bg-\[\#0E121B\] {
+  background-color: rgba(255, 253, 248, 0.95) !important;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='parchment'] aside.bg-\[\#0E121B\],
+[data-theme='clinical'] aside.bg-\[\#0E121B\],
+html.light:not([data-theme='creamy']) aside.bg-\[\#0E121B\] {
+  background-color: #FFFFFF !important;
+  border-color: var(--color-border) !important;
+}
+
+html[data-theme='creamy'] aside.bg-\[\#0E121B\],
+[data-theme='creamy'] aside.bg-\[\#0E121B\] {
+  background-color: #FDFBF7 !important;
+  border-color: var(--color-border) !important;
+}
+
+/* Inset Containers & Controls (#0B0E14, #090C12, #090D14, #090D16, #131926, #172033, slate-900 variants) */
+[data-theme='parchment'] .bg-\[\#0B0E14\]:not(body):not(.min-h-screen),
+[data-theme='creamy'] .bg-\[\#0B0E14\]:not(body):not(.min-h-screen),
+[data-theme='clinical'] .bg-\[\#0B0E14\]:not(body):not(.min-h-screen),
+html.light .bg-\[\#0B0E14\]:not(body):not(.min-h-screen),
+[data-theme='parchment'] .bg-\[\#0B0E14\]\/70,
+[data-theme='creamy'] .bg-\[\#0B0E14\]\/70,
+[data-theme='clinical'] .bg-\[\#0B0E14\]\/70,
+html.light .bg-\[\#0B0E14\]\/70,
+[data-theme='parchment'] .bg-\[\#0B0E14\]\/80,
+[data-theme='creamy'] .bg-\[\#0B0E14\]\/80,
+[data-theme='clinical'] .bg-\[\#0B0E14\]\/80,
+html.light .bg-\[\#0B0E14\]\/80,
+[data-theme='parchment'] .bg-\[\#0B0E14\]\/90,
+[data-theme='creamy'] .bg-\[\#0B0E14\]\/90,
+[data-theme='clinical'] .bg-\[\#0B0E14\]\/90,
+html.light .bg-\[\#0B0E14\]\/90,
+[data-theme='parchment'] .bg-\[\#090C12\],
+[data-theme='creamy'] .bg-\[\#090C12\],
+[data-theme='clinical'] .bg-\[\#090C12\],
+html.light .bg-\[\#090C12\],
+[data-theme='parchment'] .bg-\[\#090D14\],
+[data-theme='creamy'] .bg-\[\#090D14\],
+[data-theme='clinical'] .bg-\[\#090D14\],
+html.light .bg-\[\#090D14\],
+[data-theme='parchment'] .bg-\[\#090D16\],
+[data-theme='creamy'] .bg-\[\#090D16\],
+[data-theme='clinical'] .bg-\[\#090D16\],
+html.light .bg-\[\#090D16\],
+[data-theme='parchment'] .bg-\[\#131926\],
+[data-theme='creamy'] .bg-\[\#131926\],
+[data-theme='clinical'] .bg-\[\#131926\],
+html.light .bg-\[\#131926\],
+[data-theme='parchment'] .bg-\[\#111622\],
+[data-theme='creamy'] .bg-\[\#111622\],
+[data-theme='clinical'] .bg-\[\#111622\],
+html.light .bg-\[\#111622\],
+[data-theme='parchment'] .bg-slate-950,
+[data-theme='creamy'] .bg-slate-950,
+[data-theme='clinical'] .bg-slate-950,
+html.light .bg-slate-950,
+[data-theme='parchment'] .bg-slate-900,
+[data-theme='creamy'] .bg-slate-900,
+[data-theme='clinical'] .bg-slate-900,
+html.light .bg-slate-900,
+[data-theme='parchment'] .bg-slate-900\/40,
+[data-theme='creamy'] .bg-slate-900\/40,
+[data-theme='clinical'] .bg-slate-900\/40,
+html.light .bg-slate-900\/40,
+[data-theme='parchment'] .bg-slate-900\/50,
+[data-theme='creamy'] .bg-slate-900\/50,
+[data-theme='clinical'] .bg-slate-900\/50,
+html.light .bg-slate-900\/50,
+[data-theme='parchment'] .bg-slate-900\/60,
+[data-theme='creamy'] .bg-slate-900\/60,
+[data-theme='clinical'] .bg-slate-900\/60,
+html.light .bg-slate-900\/60,
+[data-theme='parchment'] .bg-slate-900\/80,
+[data-theme='creamy'] .bg-slate-900\/80,
+[data-theme='clinical'] .bg-slate-900\/80,
+html.light .bg-slate-900\/80 {
+  background-color: var(--color-subtle) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+[data-theme='parchment'] .bg-\[\#172033\],
+[data-theme='creamy'] .bg-\[\#172033\],
+[data-theme='clinical'] .bg-\[\#172033\],
+html.light .bg-\[\#172033\],
+[data-theme='parchment'] .bg-\[\#0E131F\]\/95,
+[data-theme='creamy'] .bg-\[\#0E131F\]\/95,
+[data-theme='clinical'] .bg-\[\#0E131F\]\/95,
+html.light .bg-\[\#0E131F\]\/95 {
+  background-color: var(--color-surface-elevated) !important;
+  color: var(--color-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* Pure White Elevated Cards (#111621, #0E121B & #0F141E) with subtle border-slate-200 and soft shadow-sm */
+[data-theme='parchment'] .bg-\[\#111621\],
+[data-theme='creamy'] .bg-\[\#111621\],
+[data-theme='clinical'] .bg-\[\#111621\],
+html.light .bg-\[\#111621\],
+[data-theme='parchment'] .bg-\[\#0E121B\],
+[data-theme='creamy'] .bg-\[\#0E121B\],
+[data-theme='clinical'] .bg-\[\#0E121B\],
+html.light .bg-\[\#0E121B\],
+[data-theme='parchment'] .bg-\[\#0F141E\],
+[data-theme='creamy'] .bg-\[\#0F141E\],
+[data-theme='clinical'] .bg-\[\#0F141E\],
+html.light .bg-\[\#0F141E\] {
+  background-color: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='parchment'] .bg-\[\#161D2B\],
+[data-theme='creamy'] .bg-\[\#161D2B\],
+[data-theme='clinical'] .bg-\[\#161D2B\],
+html.light .bg-\[\#161D2B\] {
+  background-color: var(--color-surface-elevated) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* Hairline Borders & Table Dividers */
+[data-theme='parchment'] .border-slate-800,
+[data-theme='creamy'] .border-slate-800,
+[data-theme='clinical'] .border-slate-800,
+html.light .border-slate-800,
+[data-theme='parchment'] .border-slate-800\/90,
+[data-theme='creamy'] .border-slate-800\/90,
+[data-theme='clinical'] .border-slate-800\/90,
+html.light .border-slate-800\/90,
+[data-theme='parchment'] .border-slate-800\/80,
+[data-theme='creamy'] .border-slate-800\/80,
+[data-theme='clinical'] .border-slate-800\/80,
+html.light .border-slate-800\/80,
+[data-theme='parchment'] .border-slate-800\/70,
+[data-theme='creamy'] .border-slate-800\/70,
+[data-theme='clinical'] .border-slate-800\/70,
+html.light .border-slate-800\/70,
+[data-theme='parchment'] .border-slate-800\/60,
+[data-theme='creamy'] .border-slate-800\/60,
+[data-theme='clinical'] .border-slate-800\/60,
+html.light .border-slate-800\/60,
+[data-theme='parchment'] .border-slate-700,
+[data-theme='creamy'] .border-slate-700,
+[data-theme='clinical'] .border-slate-700,
+html.light .border-slate-700,
+[data-theme='parchment'] .border-slate-700\/90,
+[data-theme='creamy'] .border-slate-700\/90,
+[data-theme='clinical'] .border-slate-700\/90,
+[data-theme='parchment'] .border-slate-700\/80,
+[data-theme='creamy'] .border-slate-700\/80,
+[data-theme='clinical'] .border-slate-700\/80,
+[data-theme='parchment'] .border-slate-600,
+[data-theme='creamy'] .border-slate-600,
+[data-theme='clinical'] .border-slate-600 {
+  border-color: var(--color-border) !important;
+}
+
+[data-theme='parchment'] .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]),
+[data-theme='creamy'] .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]),
+[data-theme='clinical'] .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]),
+[data-theme='parchment'] .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+[data-theme='creamy'] .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+[data-theme='clinical'] .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--color-border-subtle) !important;
+}
+
+/* Typography Hierarchy (Off-Black text-slate-900 for titles, text-slate-700 for body, text-slate-600 for metadata) */
+[data-theme='parchment'] .text-white,
+[data-theme='creamy'] .text-white,
+[data-theme='clinical'] .text-white,
+html.light .text-white {
+  color: var(--color-text) !important;
+}
+
+/* Keep white text strictly white inside solid colored action buttons & badges */
+[data-theme='parchment'] .bg-emerald-600,
+[data-theme='creamy'] .bg-emerald-600,
+[data-theme='clinical'] .bg-emerald-600,
+html.light .bg-emerald-600,
+[data-theme='parchment'] .bg-emerald-700,
+[data-theme='creamy'] .bg-emerald-700,
+[data-theme='clinical'] .bg-emerald-700,
+html.light .bg-emerald-700,
+[data-theme='parchment'] .bg-emerald-700\/80,
+[data-theme='creamy'] .bg-emerald-700\/80,
+[data-theme='clinical'] .bg-emerald-700\/80,
+html.light .bg-emerald-700\/80,
+[data-theme='parchment'] .bg-emerald-500,
+[data-theme='creamy'] .bg-emerald-500,
+[data-theme='clinical'] .bg-emerald-500,
+html.light .bg-emerald-500,
+[data-theme='parchment'] .bg-rose-600,
+[data-theme='creamy'] .bg-rose-600,
+[data-theme='clinical'] .bg-rose-600,
+html.light .bg-rose-600,
+[data-theme='parchment'] .bg-rose-500,
+[data-theme='creamy'] .bg-rose-500,
+[data-theme='clinical'] .bg-rose-500,
+html.light .bg-rose-500,
+[data-theme='parchment'] .bg-amber-600,
+[data-theme='creamy'] .bg-amber-600,
+[data-theme='clinical'] .bg-amber-600,
+html.light .bg-amber-600,
+[data-theme='parchment'] .bg-blue-600,
+[data-theme='creamy'] .bg-blue-600,
+[data-theme='clinical'] .bg-blue-600,
+html.light .bg-blue-600 {
+  color: #FFFFFF !important;
+}
+
+[data-theme='parchment'] .bg-emerald-600 *,
+[data-theme='creamy'] .bg-emerald-600 *,
+[data-theme='clinical'] .bg-emerald-600 *,
+html.light .bg-emerald-600 *,
+[data-theme='parchment'] .bg-emerald-700 *,
+[data-theme='creamy'] .bg-emerald-700 *,
+[data-theme='clinical'] .bg-emerald-700 *,
+html.light .bg-emerald-700 *,
+[data-theme='parchment'] .bg-emerald-700\/80 *,
+[data-theme='creamy'] .bg-emerald-700\/80 *,
+[data-theme='clinical'] .bg-emerald-700\/80 *,
+html.light .bg-emerald-700\/80 *,
+[data-theme='parchment'] .bg-emerald-500 *,
+[data-theme='creamy'] .bg-emerald-500 *,
+[data-theme='clinical'] .bg-emerald-500 *,
+html.light .bg-emerald-500 *,
+[data-theme='parchment'] .bg-rose-600 *,
+[data-theme='creamy'] .bg-rose-600 *,
+[data-theme='clinical'] .bg-rose-600 *,
+html.light .bg-rose-600 *,
+[data-theme='parchment'] .bg-amber-600 *,
+[data-theme='creamy'] .bg-amber-600 *,
+[data-theme='clinical'] .bg-amber-600 *,
+html.light .bg-amber-600 *,
+[data-theme='parchment'] .bg-blue-600 *,
+[data-theme='creamy'] .bg-blue-600 *,
+[data-theme='clinical'] .bg-blue-600 *,
+html.light .bg-blue-600 * {
+  color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+}
+
+[data-theme='parchment'] .text-slate-100,
+[data-theme='creamy'] .text-slate-100,
+[data-theme='clinical'] .text-slate-100,
+html.light .text-slate-100,
+[data-theme='parchment'] .text-slate-200,
+[data-theme='creamy'] .text-slate-200,
+[data-theme='clinical'] .text-slate-200,
+html.light .text-slate-200,
+[data-theme='parchment'] .text-slate-300,
+[data-theme='creamy'] .text-slate-300,
+[data-theme='clinical'] .text-slate-300,
+html.light .text-slate-300 {
+  color: var(--color-text-secondary) !important;
+}
+
+[data-theme='parchment'] .text-slate-400,
+[data-theme='creamy'] .text-slate-400,
+[data-theme='clinical'] .text-slate-400,
+html.light .text-slate-400,
+[data-theme='parchment'] .text-slate-500,
+[data-theme='creamy'] .text-slate-500,
+[data-theme='clinical'] .text-slate-500,
+html.light .text-slate-500,
+[data-theme='parchment'] .text-slate-600,
+[data-theme='creamy'] .text-slate-600,
+[data-theme='clinical'] .text-slate-600 {
+  color: var(--color-text-muted) !important;
+}
+
+/* High-Contrast Semantic Accents on Light / Creamy Background (WCAG AA/AAA >= 4.5:1) */
+[data-theme='parchment'] .text-emerald-400,
+[data-theme='creamy'] .text-emerald-400,
+[data-theme='clinical'] .text-emerald-400,
+html.light .text-emerald-400,
+[data-theme='parchment'] .text-emerald-300,
+[data-theme='creamy'] .text-emerald-300,
+[data-theme='clinical'] .text-emerald-300,
+html.light .text-emerald-300,
+[data-theme='parchment'] .text-emerald-200,
+[data-theme='creamy'] .text-emerald-200,
+[data-theme='clinical'] .text-emerald-200,
+html.light .text-emerald-200,
+[data-theme='parchment'] .text-emerald-100,
+[data-theme='creamy'] .text-emerald-100,
+[data-theme='clinical'] .text-emerald-100,
+html.light .text-emerald-100 {
+  color: #065F46 !important;
+}
+
+[data-theme='parchment'] .text-amber-400,
+[data-theme='creamy'] .text-amber-400,
+[data-theme='clinical'] .text-amber-400,
+html.light .text-amber-400,
+[data-theme='parchment'] .text-amber-300,
+[data-theme='creamy'] .text-amber-300,
+[data-theme='clinical'] .text-amber-300,
+html.light .text-amber-300,
+[data-theme='parchment'] .text-amber-300\/90,
+[data-theme='creamy'] .text-amber-300\/90,
+[data-theme='clinical'] .text-amber-300\/90,
+[data-theme='parchment'] .text-amber-200,
+[data-theme='creamy'] .text-amber-200,
+[data-theme='clinical'] .text-amber-200,
+html.light .text-amber-200,
+[data-theme='parchment'] .text-amber-100,
+[data-theme='creamy'] .text-amber-100,
+[data-theme='clinical'] .text-amber-100 {
+  color: #92400E !important;
+}
+
+[data-theme='parchment'] .text-blue-400,
+[data-theme='creamy'] .text-blue-400,
+[data-theme='clinical'] .text-blue-400,
+html.light .text-blue-400,
+[data-theme='parchment'] .text-blue-300,
+[data-theme='creamy'] .text-blue-300,
+[data-theme='clinical'] .text-blue-300,
+html.light .text-blue-300,
+[data-theme='parchment'] .text-blue-200,
+[data-theme='creamy'] .text-blue-200,
+[data-theme='clinical'] .text-blue-200,
+[data-theme='parchment'] .text-sky-400,
+[data-theme='creamy'] .text-sky-400,
+[data-theme='clinical'] .text-sky-400,
+[data-theme='parchment'] .text-sky-300,
+[data-theme='creamy'] .text-sky-300,
+[data-theme='clinical'] .text-sky-300,
+[data-theme='parchment'] .text-sky-200,
+[data-theme='creamy'] .text-sky-200,
+[data-theme='clinical'] .text-sky-200 {
+  color: #1E40AF !important;
+}
+
+[data-theme='parchment'] .text-purple-400,
+[data-theme='creamy'] .text-purple-400,
+[data-theme='clinical'] .text-purple-400,
+html.light .text-purple-400,
+[data-theme='parchment'] .text-purple-300,
+[data-theme='creamy'] .text-purple-300,
+[data-theme='clinical'] .text-purple-300,
+html.light .text-purple-300,
+[data-theme='parchment'] .text-purple-200,
+[data-theme='creamy'] .text-purple-200,
+[data-theme='clinical'] .text-purple-200,
+[data-theme='parchment'] .text-indigo-300,
+[data-theme='creamy'] .text-indigo-300,
+[data-theme='clinical'] .text-indigo-300 {
+  color: #5B21B6 !important;
+}
+
+[data-theme='parchment'] .text-teal-300,
+[data-theme='creamy'] .text-teal-300,
+[data-theme='clinical'] .text-teal-300,
+[data-theme='parchment'] .text-teal-400,
+[data-theme='creamy'] .text-teal-400,
+[data-theme='clinical'] .text-teal-400 {
+  color: #0F766E !important;
+}
+
+[data-theme='parchment'] .text-rose-400,
+[data-theme='creamy'] .text-rose-400,
+[data-theme='clinical'] .text-rose-400,
+html.light .text-rose-400,
+[data-theme='parchment'] .text-rose-300,
+[data-theme='creamy'] .text-rose-300,
+[data-theme='clinical'] .text-rose-300,
+html.light .text-rose-300,
+[data-theme='parchment'] .text-rose-200,
+[data-theme='creamy'] .text-rose-200,
+[data-theme='clinical'] .text-rose-200,
+html.light .text-rose-200,
+[data-theme='parchment'] .text-rose-100,
+[data-theme='creamy'] .text-rose-100,
+[data-theme='clinical'] .text-rose-100 {
+  color: #9F1239 !important;
+}
+
+/* Re-assert crisp white text & icons inside solid colored buttons/tabs (including badge counters like My Shelf 13) */
+[data-theme='parchment'] .bg-emerald-600 *,
+[data-theme='creamy'] .bg-emerald-600 *,
+[data-theme='clinical'] .bg-emerald-600 *,
+html.light .bg-emerald-600 *,
+[data-theme='parchment'] .bg-emerald-700 *,
+[data-theme='creamy'] .bg-emerald-700 *,
+[data-theme='clinical'] .bg-emerald-700 *,
+html.light .bg-emerald-700 *,
+[data-theme='parchment'] .bg-emerald-700\/80 *,
+[data-theme='creamy'] .bg-emerald-700\/80 *,
+[data-theme='clinical'] .bg-emerald-700\/80 *,
+html.light .bg-emerald-700\/80 *,
+[data-theme='parchment'] .bg-emerald-500 *,
+[data-theme='creamy'] .bg-emerald-500 *,
+[data-theme='clinical'] .bg-emerald-500 *,
+html.light .bg-emerald-500 *,
+[data-theme='parchment'] .bg-rose-600 *,
+[data-theme='creamy'] .bg-rose-600 *,
+[data-theme='clinical'] .bg-rose-600 *,
+html.light .bg-rose-600 *,
+[data-theme='parchment'] .bg-amber-600 *,
+[data-theme='creamy'] .bg-amber-600 *,
+[data-theme='clinical'] .bg-amber-600 *,
+html.light .bg-amber-600 *,
+[data-theme='parchment'] .bg-blue-600 *,
+[data-theme='creamy'] .bg-blue-600 *,
+[data-theme='clinical'] .bg-blue-600 *,
+html.light .bg-blue-600 * {
+  color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+}
+
+/* Preserve neutral Slate/Charcoal badge styling for LOOKUP_REQUIRED in Day themes */
+[data-theme='parchment'] [data-testid="lookup-required-badge"],
+[data-theme='creamy'] [data-testid="lookup-required-badge"],
+[data-theme='clinical'] [data-testid="lookup-required-badge"],
+html.light [data-testid="lookup-required-badge"] {
+  background-color: #475569 !important;
+  border-color: #334155 !important;
+  color: #FFFFFF !important;
+}
+
+/* Soft Tinted Alert & Badge Surfaces in Light & Creamy Modes (Every variant mapped!) */
+[data-theme='parchment'] .bg-rose-900,
+[data-theme='creamy'] .bg-rose-900,
+[data-theme='clinical'] .bg-rose-900,
+html.light .bg-rose-900,
+[data-theme='parchment'] .bg-rose-950,
+[data-theme='creamy'] .bg-rose-950,
+[data-theme='clinical'] .bg-rose-950,
+html.light .bg-rose-950,
+[data-theme='parchment'] .bg-rose-950\/20,
+[data-theme='creamy'] .bg-rose-950\/20,
+[data-theme='clinical'] .bg-rose-950\/20,
+html.light .bg-rose-950\/20,
+[data-theme='parchment'] .bg-rose-950\/25,
+[data-theme='creamy'] .bg-rose-950\/25,
+[data-theme='clinical'] .bg-rose-950\/25,
+html.light .bg-rose-950\/25,
+[data-theme='parchment'] .bg-rose-950\/30,
+[data-theme='creamy'] .bg-rose-950\/30,
+[data-theme='clinical'] .bg-rose-950\/30,
+html.light .bg-rose-950\/30,
+[data-theme='parchment'] .bg-rose-950\/40,
+[data-theme='creamy'] .bg-rose-950\/40,
+[data-theme='clinical'] .bg-rose-950\/40,
+html.light .bg-rose-950\/40,
+[data-theme='parchment'] .bg-rose-950\/50,
+[data-theme='creamy'] .bg-rose-950\/50,
+[data-theme='clinical'] .bg-rose-950\/50,
+html.light .bg-rose-950\/50,
+[data-theme='parchment'] .bg-rose-950\/60,
+[data-theme='creamy'] .bg-rose-950\/60,
+[data-theme='clinical'] .bg-rose-950\/60,
+html.light .bg-rose-950\/60,
+[data-theme='parchment'] .bg-rose-950\/70,
+[data-theme='creamy'] .bg-rose-950\/70,
+[data-theme='clinical'] .bg-rose-950\/70,
+html.light .bg-rose-950\/70,
+[data-theme='parchment'] .bg-rose-500\/10,
+[data-theme='creamy'] .bg-rose-500\/10,
+[data-theme='clinical'] .bg-rose-500\/10,
+[data-theme='parchment'] .bg-rose-500\/15,
+[data-theme='creamy'] .bg-rose-500\/15,
+[data-theme='clinical'] .bg-rose-500\/15,
+[data-theme='parchment'] .bg-rose-500\/20,
+[data-theme='creamy'] .bg-rose-500\/20,
+[data-theme='clinical'] .bg-rose-500\/20 {
+  background-color: #FFE4E6 !important;
+  color: #881337 !important;
+  border-color: #FDA4AF !important;
+}
+
+[data-theme='parchment'] .bg-amber-950,
+[data-theme='creamy'] .bg-amber-950,
+[data-theme='clinical'] .bg-amber-950,
+html.light .bg-amber-950,
+[data-theme='parchment'] .bg-amber-950\/30,
+[data-theme='creamy'] .bg-amber-950\/30,
+[data-theme='clinical'] .bg-amber-950\/30,
+html.light .bg-amber-950\/30,
+[data-theme='parchment'] .bg-amber-950\/40,
+[data-theme='creamy'] .bg-amber-950\/40,
+[data-theme='clinical'] .bg-amber-950\/40,
+html.light .bg-amber-950\/40,
+[data-theme='parchment'] .bg-amber-950\/60,
+[data-theme='creamy'] .bg-amber-950\/60,
+[data-theme='clinical'] .bg-amber-950\/60,
+html.light .bg-amber-950\/60,
+[data-theme='parchment'] .bg-amber-950\/70,
+[data-theme='creamy'] .bg-amber-950\/70,
+[data-theme='clinical'] .bg-amber-950\/70,
+html.light .bg-amber-950\/70,
+[data-theme='parchment'] .bg-amber-950\/95,
+[data-theme='creamy'] .bg-amber-950\/95,
+[data-theme='clinical'] .bg-amber-950\/95,
+html.light .bg-amber-950\/95,
+[data-theme='parchment'] .bg-amber-500\/10,
+[data-theme='creamy'] .bg-amber-500\/10,
+[data-theme='clinical'] .bg-amber-500\/10,
+[data-theme='parchment'] .bg-amber-500\/15,
+[data-theme='creamy'] .bg-amber-500\/15,
+[data-theme='clinical'] .bg-amber-500\/15,
+[data-theme='parchment'] .bg-amber-500\/20,
+[data-theme='creamy'] .bg-amber-500\/20,
+[data-theme='clinical'] .bg-amber-500\/20 {
+  background-color: #FEF3C7 !important;
+  color: #78350F !important;
+  border-color: #FCD34D !important;
+}
+
+[data-theme='parchment'] .bg-emerald-950,
+[data-theme='creamy'] .bg-emerald-950,
+[data-theme='clinical'] .bg-emerald-950,
+html.light .bg-emerald-950,
+[data-theme='parchment'] .bg-emerald-900\/30,
+[data-theme='creamy'] .bg-emerald-900\/30,
+[data-theme='clinical'] .bg-emerald-900\/30,
+html.light .bg-emerald-900\/30,
+[data-theme='parchment'] .bg-emerald-950\/70,
+[data-theme='creamy'] .bg-emerald-950\/70,
+[data-theme='clinical'] .bg-emerald-950\/70,
+html.light .bg-emerald-950\/70,
+[data-theme='parchment'] .bg-emerald-950\/60,
+[data-theme='creamy'] .bg-emerald-950\/60,
+[data-theme='clinical'] .bg-emerald-950\/60,
+html.light .bg-emerald-950\/60,
+[data-theme='parchment'] .bg-emerald-950\/40,
+[data-theme='creamy'] .bg-emerald-950\/40,
+[data-theme='clinical'] .bg-emerald-950\/40,
+html.light .bg-emerald-950\/40,
+[data-theme='parchment'] .bg-emerald-950\/30,
+[data-theme='creamy'] .bg-emerald-950\/30,
+[data-theme='clinical'] .bg-emerald-950\/30,
+html.light .bg-emerald-950\/30,
+[data-theme='parchment'] .bg-emerald-950\/25,
+[data-theme='creamy'] .bg-emerald-950\/25,
+[data-theme='clinical'] .bg-emerald-950\/25,
+html.light .bg-emerald-950\/25,
+[data-theme='parchment'] .bg-emerald-950\/20,
+[data-theme='creamy'] .bg-emerald-950\/20,
+[data-theme='clinical'] .bg-emerald-950\/20,
+html.light .bg-emerald-950\/20,
+[data-theme='parchment'] .bg-emerald-950\/15,
+[data-theme='creamy'] .bg-emerald-950\/15,
+[data-theme='clinical'] .bg-emerald-950\/15,
+html.light .bg-emerald-950\/15,
+[data-theme='parchment'] .bg-emerald-600\/10,
+[data-theme='creamy'] .bg-emerald-600\/10,
+[data-theme='clinical'] .bg-emerald-600\/10,
+[data-theme='parchment'] .bg-emerald-600\/15,
+[data-theme='creamy'] .bg-emerald-600\/15,
+[data-theme='clinical'] .bg-emerald-600\/15,
+[data-theme='parchment'] .bg-emerald-600\/20,
+[data-theme='creamy'] .bg-emerald-600\/20,
+[data-theme='clinical'] .bg-emerald-600\/20,
+[data-theme='parchment'] .bg-emerald-500\/10,
+[data-theme='creamy'] .bg-emerald-500\/10,
+[data-theme='clinical'] .bg-emerald-500\/10,
+[data-theme='parchment'] .bg-emerald-500\/15,
+[data-theme='creamy'] .bg-emerald-500\/15,
+[data-theme='clinical'] .bg-emerald-500\/15,
+[data-theme='parchment'] .bg-emerald-500\/20,
+[data-theme='creamy'] .bg-emerald-500\/20,
+[data-theme='clinical'] .bg-emerald-500\/20 {
+  background-color: #D1FAE5 !important;
+  color: #064E3B !important;
+  border-color: #6EE7B7 !important;
+}
+
+[data-theme='parchment'] .bg-blue-500\/10,
+[data-theme='creamy'] .bg-blue-500\/10,
+[data-theme='clinical'] .bg-blue-500\/10,
+[data-theme='parchment'] .bg-blue-500\/15,
+[data-theme='creamy'] .bg-blue-500\/15,
+[data-theme='clinical'] .bg-blue-500\/15,
+[data-theme='parchment'] .bg-blue-500\/20,
+[data-theme='creamy'] .bg-blue-500\/20,
+[data-theme='clinical'] .bg-blue-500\/20,
+[data-theme='parchment'] .bg-blue-950,
+[data-theme='creamy'] .bg-blue-950,
+[data-theme='clinical'] .bg-blue-950,
+[data-theme='parchment'] .bg-blue-950\/60,
+[data-theme='creamy'] .bg-blue-950\/60,
+[data-theme='clinical'] .bg-blue-950\/60,
+[data-theme='parchment'] .bg-sky-950,
+[data-theme='creamy'] .bg-sky-950,
+[data-theme='clinical'] .bg-sky-950,
+html.light .bg-sky-950,
+[data-theme='parchment'] .bg-sky-950\/60,
+[data-theme='creamy'] .bg-sky-950\/60,
+[data-theme='clinical'] .bg-sky-950\/60,
+html.light .bg-sky-950\/60,
+[data-theme='parchment'] .bg-sky-950\/50,
+[data-theme='creamy'] .bg-sky-950\/50,
+[data-theme='clinical'] .bg-sky-950\/50,
+html.light .bg-sky-950\/50,
+[data-theme='parchment'] .bg-sky-950\/40,
+[data-theme='creamy'] .bg-sky-950\/40,
+[data-theme='clinical'] .bg-sky-950\/40,
+html.light .bg-sky-950\/40,
+[data-theme='parchment'] .bg-sky-500\/10,
+[data-theme='creamy'] .bg-sky-500\/10,
+[data-theme='clinical'] .bg-sky-500\/10,
+[data-theme='parchment'] .bg-sky-500\/15,
+[data-theme='creamy'] .bg-sky-500\/15,
+[data-theme='clinical'] .bg-sky-500\/15 {
+  background-color: #DBEAFE !important;
+  color: #1E3A8A !important;
+  border-color: #93C5FD !important;
+}
+
+[data-theme='parchment'] .bg-purple-500\/10,
+[data-theme='creamy'] .bg-purple-500\/10,
+[data-theme='clinical'] .bg-purple-500\/10,
+[data-theme='parchment'] .bg-purple-500\/15,
+[data-theme='creamy'] .bg-purple-500\/15,
+[data-theme='clinical'] .bg-purple-500\/15,
+[data-theme='parchment'] .bg-purple-500\/20,
+[data-theme='creamy'] .bg-purple-500\/20,
+[data-theme='clinical'] .bg-purple-500\/20,
+[data-theme='parchment'] .bg-purple-950,
+[data-theme='creamy'] .bg-purple-950,
+[data-theme='clinical'] .bg-purple-950,
+html.light .bg-purple-950,
+[data-theme='parchment'] .bg-purple-950\/70,
+[data-theme='creamy'] .bg-purple-950\/70,
+[data-theme='clinical'] .bg-purple-950\/70,
+html.light .bg-purple-950\/70,
+[data-theme='parchment'] .bg-purple-950\/60,
+[data-theme='creamy'] .bg-purple-950\/60,
+[data-theme='clinical'] .bg-purple-950\/60,
+html.light .bg-purple-950\/60,
+[data-theme='parchment'] .bg-indigo-950,
+[data-theme='creamy'] .bg-indigo-950,
+[data-theme='clinical'] .bg-indigo-950,
+html.light .bg-indigo-950,
+[data-theme='parchment'] .bg-indigo-950\/70,
+[data-theme='creamy'] .bg-indigo-950\/70,
+[data-theme='clinical'] .bg-indigo-950\/70,
+html.light .bg-indigo-950\/70,
+[data-theme='parchment'] .bg-indigo-950\/60,
+[data-theme='creamy'] .bg-indigo-950\/60,
+[data-theme='clinical'] .bg-indigo-950\/60,
+html.light .bg-indigo-950\/60,
+[data-theme='parchment'] .bg-indigo-950\/50,
+[data-theme='creamy'] .bg-indigo-950\/50,
+[data-theme='clinical'] .bg-indigo-950\/50,
+html.light .bg-indigo-950\/50 {
+  background-color: #EDE9FE !important;
+  color: #4C1D95 !important;
+  border-color: #C4B5FD !important;
+}
+
+[data-theme='parchment'] .bg-teal-950,
+[data-theme='creamy'] .bg-teal-950,
+[data-theme='clinical'] .bg-teal-950,
+html.light .bg-teal-950,
+[data-theme='parchment'] .bg-teal-950\/70,
+[data-theme='creamy'] .bg-teal-950\/70,
+[data-theme='clinical'] .bg-teal-950\/70,
+html.light .bg-teal-950\/70,
+[data-theme='parchment'] .bg-teal-950\/60,
+[data-theme='creamy'] .bg-teal-950\/60,
+[data-theme='clinical'] .bg-teal-950\/60,
+html.light .bg-teal-950\/60 {
+  background-color: #CCFBF1 !important;
+  color: #115E59 !important;
+  border-color: #5EEAD4 !important;
+}
+
+[data-theme='parchment'] .bg-slate-500\/15,
+[data-theme='creamy'] .bg-slate-500\/15,
+[data-theme='clinical'] .bg-slate-500\/15 {
+  background-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+/* Brushed Silver & Warm Cream Secondary Buttons (slate-800 & slate-700 variants) */
+[data-theme='parchment'] .bg-slate-800,
+[data-theme='clinical'] .bg-slate-800,
+html.light:not([data-theme='creamy']) .bg-slate-800,
+[data-theme='parchment'] .bg-slate-700,
+[data-theme='clinical'] .bg-slate-700,
+html.light:not([data-theme='creamy']) .bg-slate-700,
+[data-theme='parchment'] .bg-slate-700\/80,
+[data-theme='clinical'] .bg-slate-700\/80,
+html.light:not([data-theme='creamy']) .bg-slate-700\/80,
+[data-theme='parchment'] .bg-slate-700\/60,
+[data-theme='clinical'] .bg-slate-700\/60,
+[data-theme='parchment'] .bg-slate-700\/40,
+[data-theme='clinical'] .bg-slate-700\/40 {
+  background-color: #E2E8F0 !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
+}
+
+html[data-theme='creamy'] .bg-slate-800,
+[data-theme='creamy'] .bg-slate-800,
+html[data-theme='creamy'] .bg-slate-700,
+[data-theme='creamy'] .bg-slate-700,
+html[data-theme='creamy'] .bg-slate-700\/80,
+[data-theme='creamy'] .bg-slate-700\/80,
+html[data-theme='creamy'] .bg-slate-700\/60,
+[data-theme='creamy'] .bg-slate-700\/60,
+html[data-theme='creamy'] .bg-slate-700\/40,
+[data-theme='creamy'] .bg-slate-700\/40 {
+  background-color: #EAE1CE !important;
+  color: #18130E !important;
+  border-color: #D6C9B1 !important;
+}
+
+[data-theme='parchment'] .bg-slate-800:hover,
+[data-theme='clinical'] .bg-slate-800:hover,
+html.light:not([data-theme='creamy']) .bg-slate-800:hover,
+[data-theme='parchment'] .bg-slate-700:hover,
+[data-theme='clinical'] .bg-slate-700:hover,
+html.light:not([data-theme='creamy']) .bg-slate-700:hover {
+  background-color: #CBD5E1 !important;
+}
+
+html[data-theme='creamy'] .bg-slate-800:hover,
+[data-theme='creamy'] .bg-slate-800:hover,
+html[data-theme='creamy'] .bg-slate-700:hover,
+[data-theme='creamy'] .bg-slate-700:hover {
+  background-color: #DFD3BC !important;
+}
+
+[data-theme='parchment'] .bg-slate-800\/90,
+[data-theme='clinical'] .bg-slate-800\/90,
+[data-theme='parchment'] .bg-slate-800\/80,
+[data-theme='clinical'] .bg-slate-800\/80,
+[data-theme='parchment'] .bg-slate-800\/70,
+[data-theme='clinical'] .bg-slate-800\/70,
+[data-theme='parchment'] .bg-slate-800\/60,
+[data-theme='clinical'] .bg-slate-800\/60,
+[data-theme='parchment'] .bg-slate-800\/50,
+[data-theme='clinical'] .bg-slate-800\/50,
+[data-theme='parchment'] .bg-slate-800\/40,
+[data-theme='clinical'] .bg-slate-800\/40,
+html.light:not([data-theme='creamy']) .bg-slate-800\/80 {
+  background-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html[data-theme='creamy'] .bg-slate-800\/90,
+html[data-theme='creamy'] .bg-slate-800\/80,
+html[data-theme='creamy'] .bg-slate-800\/70,
+html[data-theme='creamy'] .bg-slate-800\/60,
+html[data-theme='creamy'] .bg-slate-800\/50,
+html[data-theme='creamy'] .bg-slate-800\/40,
+[data-theme='creamy'] .bg-slate-800\/90,
+[data-theme='creamy'] .bg-slate-800\/80,
+[data-theme='creamy'] .bg-slate-800\/70,
+[data-theme='creamy'] .bg-slate-800\/60,
+[data-theme='creamy'] .bg-slate-800\/50,
+[data-theme='creamy'] .bg-slate-800\/40 {
+  background-color: #EAE1CE !important;
+  color: #18130E !important;
+}
+
+[data-theme='parchment'] .hover\:bg-slate-800\/30:hover,
+[data-theme='clinical'] .hover\:bg-slate-800\/30:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-800\/30:hover {
+  background-color: #F1F5F9 !important;
+}
+
+html[data-theme='creamy'] .hover\:bg-slate-800\/30:hover,
+[data-theme='creamy'] .hover\:bg-slate-800\/30:hover {
+  background-color: #F5EFE4 !important;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #111622 !important;
+  color: #F8FAFC !important;
+}
+
+[data-theme='parchment'] input,
+[data-theme='parchment'] select,
+[data-theme='parchment'] textarea,
+[data-theme='creamy'] input,
+[data-theme='creamy'] select,
+[data-theme='creamy'] textarea,
+[data-theme='clinical'] input,
+[data-theme='clinical'] select,
+[data-theme='clinical'] textarea,
+html.light input,
+html.light select,
+html.light textarea {
+  color-scheme: light;
+  background-color: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+[data-theme='parchment'] select option,
+[data-theme='creamy'] select option,
+[data-theme='clinical'] select option,
+html.light select option {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
+/* High-Contrast Interactive Hover Overrides for Day Mode (Preventing Invisible White-on-White) */
+[data-theme='parchment'] .hover\:text-white:hover,
+[data-theme='creamy'] .hover\:text-white:hover,
+[data-theme='clinical'] .hover\:text-white:hover,
+html.light .hover\:text-white:hover,
+[data-theme='parchment'] .hover\:text-slate-100:hover,
+[data-theme='creamy'] .hover\:text-slate-100:hover,
+[data-theme='clinical'] .hover\:text-slate-100:hover,
+html.light .hover\:text-slate-100:hover,
+[data-theme='parchment'] .hover\:text-slate-200:hover,
+[data-theme='creamy'] .hover\:text-slate-200:hover,
+[data-theme='clinical'] .hover\:text-slate-200:hover,
+html.light .hover\:text-slate-200:hover,
+[data-theme='parchment'] .hover\:text-slate-300:hover,
+[data-theme='creamy'] .hover\:text-slate-300:hover,
+[data-theme='clinical'] .hover\:text-slate-300:hover,
+html.light .hover\:text-slate-300:hover {
+  color: var(--color-text) !important;
+}
+
+[data-theme='parchment'] .hover\:bg-slate-800:hover,
+[data-theme='clinical'] .hover\:bg-slate-800:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-800:hover,
+[data-theme='parchment'] .hover\:bg-slate-700:hover,
+[data-theme='clinical'] .hover\:bg-slate-700:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-700:hover,
+[data-theme='parchment'] .hover\:bg-slate-800\/50:hover,
+[data-theme='clinical'] .hover\:bg-slate-800\/50:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-800\/50:hover,
+[data-theme='parchment'] .hover\:bg-slate-800\/60:hover,
+[data-theme='clinical'] .hover\:bg-slate-800\/60:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-800\/60:hover,
+[data-theme='parchment'] .hover\:bg-slate-900\/50:hover,
+[data-theme='clinical'] .hover\:bg-slate-900\/50:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-900\/50:hover,
+[data-theme='parchment'] .hover\:bg-slate-900\/60:hover,
+[data-theme='clinical'] .hover\:bg-slate-900\/60:hover,
+html.light:not([data-theme='creamy']) .hover\:bg-slate-900\/60:hover {
+  background-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html[data-theme='creamy'] .hover\:bg-slate-800:hover,
+[data-theme='creamy'] .hover\:bg-slate-800:hover,
+html[data-theme='creamy'] .hover\:bg-slate-700:hover,
+[data-theme='creamy'] .hover\:bg-slate-700:hover,
+html[data-theme='creamy'] .hover\:bg-slate-800\/50:hover,
+[data-theme='creamy'] .hover\:bg-slate-800\/50:hover,
+html[data-theme='creamy'] .hover\:bg-slate-800\/60:hover,
+[data-theme='creamy'] .hover\:bg-slate-800\/60:hover {
+  background-color: #DFD3BC !important;
+  color: #18130E !important;
+}
+
+[data-theme='parchment'] .hover\:border-slate-700:hover,
+[data-theme='clinical'] .hover\:border-slate-700:hover,
+html.light:not([data-theme='creamy']) .hover\:border-slate-700:hover,
+[data-theme='parchment'] .hover\:border-slate-600:hover,
+[data-theme='clinical'] .hover\:border-slate-600:hover,
+html.light:not([data-theme='creamy']) .hover\:border-slate-600:hover {
+  border-color: #94A3B8 !important;
+}
+
+[data-theme='parchment'] input::placeholder,
+[data-theme='creamy'] input::placeholder,
+[data-theme='clinical'] input::placeholder,
+html.light input::placeholder,
+[data-theme='parchment'] textarea::placeholder,
+[data-theme='creamy'] textarea::placeholder,
+[data-theme='clinical'] textarea::placeholder,
+html.light textarea::placeholder {
+  color: #64748B !important;
+  opacity: 1 !important;
+}
+
+/* 2. Cypress Theme Overrides */
+[data-theme='cypress'] body {
+  background-color: var(--color-canvas) !important;
+  color: var(--color-text) !important;
+}
+[data-theme='cypress'] .bg-\[\#0B0E14\] {
+  background-color: var(--color-subtle) !important;
+}
+[data-theme='cypress'] .bg-\[\#111621\],
+[data-theme='cypress'] .bg-\[\#0E121B\],
+[data-theme='cypress'] .bg-\[\#0F141E\] {
+  background-color: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+[data-theme='cypress'] .bg-\[\#161D2B\] {
+  background-color: var(--color-surface-elevated) !important;
+  border-color: var(--color-border) !important;
+}
+[data-theme='cypress'] .border-slate-800,
+[data-theme='cypress'] .border-slate-800\/80,
+[data-theme='cypress'] .border-slate-800\/90 {
+  border-color: var(--color-border) !important;
+}
+[data-theme='cypress'] .text-slate-400 {
+  color: var(--color-text-muted) !important;
+}
+[data-theme='cypress'] .text-slate-300 {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 3. Grasse Theme Overrides */
+[data-theme='grasse'] body {
+  background-color: var(--color-canvas) !important;
+  color: var(--color-text) !important;
+}
+[data-theme='grasse'] .bg-\[\#0B0E14\] {
+  background-color: var(--color-subtle) !important;
+}
+[data-theme='grasse'] .bg-\[\#111621\],
+[data-theme='grasse'] .bg-\[\#0E121B\],
+[data-theme='grasse'] .bg-\[\#0F141E\] {
+  background-color: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+[data-theme='grasse'] .bg-\[\#161D2B\] {
+  background-color: var(--color-surface-elevated) !important;
+  border-color: var(--color-border) !important;
+}
+[data-theme='grasse'] .border-slate-800,
+[data-theme='grasse'] .border-slate-800\/80,
+[data-theme='grasse'] .border-slate-800\/90 {
+  border-color: var(--color-border) !important;
+}
+[data-theme='grasse'] .text-slate-400 {
+  color: var(--color-text-muted) !important;
+}
+[data-theme='grasse'] .text-slate-300 {
+  color: var(--color-text-secondary) !important;
+}
+
+/* ==========================================================================
+   Global Button & Interactive Control Alignment & Touch Responsiveness
+   ========================================================================== */
+button,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+

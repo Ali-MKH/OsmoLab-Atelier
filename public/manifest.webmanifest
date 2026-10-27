@@ -1,0 +1,60 @@
+{
+  "id": "/",
+  "name": "OsmoLab — Perfumery Formulation & Olfactory Platform",
+  "short_name": "OsmoLab",
+  "description": "Professional perfumery formulation laboratory, raw material encyclopedia, lot-based inventory manager, version-controlled formula engine, olfactory wheel, scent-memory trainer, and AI olfactory mentor.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#0B0E14",
+  "background_color": "#0B0E14",
+  "categories": ["productivity", "education", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Formula Lab",
+      "short_name": "Formula Lab",
+      "description": "Open the perfumery formula editor and batch scaler",
+      "url": "/?section=formula-lab",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Raw Materials",
+      "short_name": "Materials",
+      "description": "Browse the raw material encyclopedia and IFRA limits",
+      "url": "/?section=materials",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Olfactory Wheel",
+      "short_name": "Scent Wheel",
+      "description": "Open the 17-family interactive olfactory wheel",
+      "url": "/?section=wheel",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "OsmoLab",
+  "description": "Professional perfumery formulation laboratory, raw material encyclopedia, version-controlled formula engine, olfactory wheel, scent-memory trainer, and AI olfactory mentor.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
