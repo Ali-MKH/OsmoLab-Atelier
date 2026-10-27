@@ -128,8 +128,8 @@ export const TRANSLATIONS: TranslationDictionary = {
     fa: 'هرم بویایی و معماری پل‌های پیوند دهنده فراریت',
   },
   pyramidHeaderDesc: {
-    en: 'Engineered evaporation rates, classical ratio benchmarks, drag-and-drop tiered formulation, and molecular transition bridges.',
-    fa: 'محاسبه نرخ تبخیر، الگوهای کلاسیک تناسب، فرمولاسیون کشیدن و رها کردن در لایه‌ها و پل‌های مولکولی پیوند دهنده.',
+    en: 'Balance formula proportions across five evaporation tiers and molecular bridges from top notes to base.',
+    fa: 'توازن نسبت‌های فرمول در پنج لایه تبخیر و پل‌های مولکولی از نت‌های آغازین تا پایه.',
   },
   dragDropHint: {
     en: 'Drag materials directly into any tier or use vertical faders to sculpt proportions',

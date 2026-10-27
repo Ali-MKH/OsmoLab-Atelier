@@ -543,18 +543,14 @@ export const HelpAndTutorialView: React.FC<{
 
   return (
     <div className="space-y-6 w-full max-w-full min-w-0 overflow-hidden" dir={getDir(lang)} data-testid="help-and-tutorial-view">
-      {/* Top Header Banner */}
-      <div className="rounded-xl bg-[#111621] border border-slate-800 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-1.5 max-w-2xl">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Interactive Atelier Manual · Graphical Architecture & Guided Tour</span>
-          </div>
+      {/* Clean Page Title Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
           <h1 className="text-2xl font-sans font-semibold text-white">
             OsmoLab Illustrated Guide & Interactive Step-by-Step Tour
           </h1>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Master every instrument in the perfumery laboratory through interactive graphical schematics, step-by-step hands-on exercises, or launch the live guided tour overlay that walks you across each workspace tab.
+          <p className="text-xs text-slate-400 mt-1">
+            Explore interactive workflow schematics, hands-on formulation checklists, and guided live studio tours.
           </p>
         </div>
 
@@ -563,7 +559,7 @@ export const HelpAndTutorialView: React.FC<{
             type="button"
             onClick={() => onStartLiveTour(0)}
             data-testid="launch-live-tour-btn"
-            className="w-full md:w-auto px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg transition-colors"
+            className="w-full md:w-auto px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-colors"
           >
             <Play className="w-4 h-4 fill-current shrink-0" />
             <span>Start Live Interactive App Tour (7 Steps)</span>
@@ -923,36 +919,32 @@ export const AboutAndPrivacyView: React.FC<{
 }> = ({ lang = 'en', onStartTour }) => {
   return (
     <div className="space-y-6 w-full max-w-full min-w-0 overflow-hidden" dir={getDir(lang)} data-testid="about-and-privacy-view">
-      {/* Hero Project Identity & Version Card */}
-      <div className="rounded-xl bg-[#111621] border border-slate-800 p-6 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-semibold">
-              OsmoLab Atelier · Scientific Perfumery & Olfactory Formulation Platform
-            </div>
-            <h1 className="text-2xl font-sans font-semibold text-white">
-              About OsmoLab & Privacy Governance
-            </h1>
-            <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
-              OsmoLab is a precision fragrance formulation workbench, 5-tier volatility pyramid analyzer, 16-family olfactory wheel, organ inventory ledger, and sensory training studio engineered for independent perfumers, fragrance houses, and olfactory students.
-            </p>
-          </div>
-
-          <div className="flex flex-col items-start md:items-end gap-1.5 shrink-0 font-mono text-xs">
-            <div
-              data-testid="about-version-badge"
-              className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-bold"
-            >
-              Version 2.4.0 (Build 2026.10)
-            </div>
-            <span className="text-[11px] text-slate-400">
-              IFRA 51st Amendment Engine · Bilingual EN / FA
-            </span>
-          </div>
+      {/* Clean Page Title Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-sans font-semibold text-white">
+            About OsmoLab & Privacy Governance
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Review platform architecture, open-source formulation engines, release version history, and zero-trust data governance.
+          </p>
         </div>
 
-        {/* GitHub Repository & Open-Source Reference Banner */}
-        <div className="rounded-xl bg-[#0B0E14] border border-slate-800 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col items-start md:items-end gap-1 shrink-0 font-mono text-xs">
+          <div
+            data-testid="about-version-badge"
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-bold"
+          >
+            Version 2.4.0 (Build 2026.10)
+          </div>
+          <span className="text-[11px] text-slate-400">
+            IFRA 51st Amendment Engine · Bilingual EN / FA
+          </span>
+        </div>
+      </div>
+
+      {/* GitHub Repository & Open-Source Reference Card */}
+      <div className="rounded-xl bg-[#111621] border border-slate-800 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-white">
               <GitBranch className="w-4 h-4 text-emerald-400" />
@@ -983,14 +975,13 @@ export const AboutAndPrivacyView: React.FC<{
               <button
                 type="button"
                 onClick={onStartTour}
-                className="w-full sm:w-auto px-3.5 py-2.5 rounded-lg bg-[#111621] hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto px-3.5 py-2.5 rounded-lg bg-[#0B0E14] hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5"
               >
                 <Compass className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Open Interactive Tutorial</span>
               </button>
             )}
           </div>
-        </div>
       </div>
 
       {/* Platform Architecture & Release Highlights */}

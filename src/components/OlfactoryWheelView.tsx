@@ -575,7 +575,7 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
               Scent Hierarchy Explorer
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Navigate from Academic Super-Family (Floral, Amber, Woody, Fresh) → Family → Sub-Facet → Raw Materials → Accords → Formulas.
+              Drill down from olfactory super-families and sub-facets directly to matching raw materials, accords, and formulas.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 font-mono-tabular">
@@ -853,46 +853,39 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
 
   // 2. Interactive Academic Olfactory Wheel View
   return (
-    <div className="space-y-7">
-      {/* Educational Banner: The Michael Edwards & Osmothèque Standard */}
-      <div className="rounded-xl bg-[#111621] border border-slate-800/80 p-5 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Compass className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-medium uppercase tracking-wider text-emerald-400 font-mono-tabular">
-                Academic Standard Fragrance Wheel (Michael Edwards & Osmothèque Taxonomy)
-              </span>
-            </div>
-            <h1 className="text-xl font-sans font-semibold text-white mt-1">
-              Academic Fragrance Wheel & Aligned Calibration
-            </h1>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-4xl font-normal">
-              Modeled on the <span className="text-slate-200">Michael Edwards Fragrances of the World</span> standard: <span className="text-slate-200">4 outer aspect borders</span> (Floral, Ambery, Woody, Fresh) enclose <span className="text-slate-200">14 equal-angle fragrance families</span> around an expanded calibration hub so adjacent families transition smoothly and opposite families provide complementary contrast.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              data-testid="toggle-radar-overlay-btn"
-              onClick={() => setShowRadarOverlay((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-md text-xs font-normal border transition-colors flex items-center gap-1.5 ${
-                showRadarOverlay
-                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-[#0B0E14] text-slate-400 border-slate-800 hover:text-white'
-              }`}
-            >
-              <Radar className="w-3.5 h-3.5" />
-              <span>{showRadarOverlay ? 'Radar Overlay On' : 'Radar Overlay Off'}</span>
-            </button>
-          </div>
+    <div className="space-y-6">
+      {/* Clean Page Title Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-sans font-semibold text-white">
+            Academic Fragrance Wheel & Aligned Calibration
+          </h1>
+          <p className="text-xs text-slate-400 mt-1 font-normal">
+            Classify ingredients across 14 academic fragrance families and calibrate your target brief against perceived blotter results.
+          </p>
         </div>
 
-        {/* Super-Family Segmented Filter Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-slate-400 mr-1 font-normal">Outer Aspects:</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            data-testid="toggle-radar-overlay-btn"
+            onClick={() => setShowRadarOverlay((prev) => !prev)}
+            className={`px-3 py-1.5 rounded-md text-xs font-normal border transition-colors flex items-center gap-1.5 ${
+              showRadarOverlay
+                ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40'
+                : 'bg-[#111621] text-slate-400 border-slate-800 hover:text-white'
+            }`}
+          >
+            <Radar className="w-3.5 h-3.5" />
+            <span>{showRadarOverlay ? 'Radar Overlay On' : 'Radar Overlay Off'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Super-Family Segmented Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-slate-400 mr-1 font-normal">Outer Aspects:</span>
             <button
               type="button"
               data-testid="filter-macro-all"
@@ -973,7 +966,6 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
               Result (Smelled)
             </button>
           </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

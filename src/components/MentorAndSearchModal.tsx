@@ -547,7 +547,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
             Context-Aware AI Olfactory Mentor
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Grounded in your current formula ({activeFormula.name} {currentVersion?.versionLabel}), Target Brief, and historical sensory evaluations.
+            Diagnose structural imbalances against your target brief and generate safe trial branches for your formula.
           </p>
         </div>
         <span className="text-xs font-mono-tabular text-slate-400">
@@ -1122,7 +1122,7 @@ export const GlobalSearchView: React.FC<GlobalSearchViewProps> = ({
           Global Laboratory Search & Multi-Facet Filter
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Search across raw materials, formulas, versions, accords, experiments, evaluations, and scent memories (Keyboard shortcut: Cmd/Ctrl + K).
+          Search and filter across all raw materials, accords, formulas, evaluations, and scent memories in one place.
         </p>
       </div>
 
@@ -1503,7 +1503,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Workspace Settings, Currency & Data Ownership
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Configure multi-currency batch valuation (including USD to IRR live & custom rates), authentication, multi-palette appearance themes, and IFRA safety checks.
+          Configure batch valuation currencies, appearance themes, IFRA safety guardrails, and full workspace backups.
         </p>
       </div>
 

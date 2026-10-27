@@ -1340,13 +1340,13 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
         )}
 
         {/* Studio Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/70 pb-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/70 pb-4">
           <div>
             <h1 className="text-2xl font-sans font-semibold text-white">
               Accords & Fragrance Bases Studio
             </h1>
-            <p className="text-xs text-slate-400 mt-1.5 font-normal leading-relaxed max-w-3xl">
-              Build custom accords from scratch using the dedicated form on the left, track and revert iterations in the Accord Version History section, and switch between Detailed Cards and Compact View on the right.
+            <p className="text-xs text-slate-400 mt-1 font-normal">
+              Build reusable fragrance bases, track accord version history, and blend saved accords directly into active formulas.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
@@ -2546,48 +2546,35 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
         </div>
       )}
 
-      {/* Step 1 Workflow Orientation Banner */}
-      <div className="rounded-lg bg-[#111621] border border-slate-800/80 p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3 text-xs overflow-hidden">
-        <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
-          <Database className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
-          <div className="min-w-0">
-            <span className="font-semibold text-white">
-              Formula Development Route · Step 1: Perfumer&apos;s Organ &amp; Bench
-            </span>
-            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-              Hierarchy: <span className="text-slate-200 font-medium">Catalog → My Workbench → Formula</span>. Filter between <span className="text-emerald-400 font-medium">My Workbench</span> (your owned/accessible ingredients) and the master <span className="text-slate-300 font-medium">Catalog</span> dictionary. Taxonomy &amp; olfactory reference: <span className="text-slate-300">ScenTree CC BY-NC 4.0</span>.
-            </p>
-          </div>
-        </div>
-        {selectedMaterial && (
-          <button
-            type="button"
-            onClick={() => openTargetFormulaModalForMaterial(selectedMaterial, 2)}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs font-normal transition-colors flex items-center justify-center gap-1.5 max-w-full self-start xl:self-center shrink-0 shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Add &quot;{selectedMaterial.name}&quot; to Formula...</span>
-          </button>
-        )}
-      </div>
-
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-sans font-semibold text-white">
             Perfumery Materials Organ &amp; Bench
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Master Catalog reference dictionary, My Workbench owned ingredients, pyramid volatility tiers, and dual IFRA 51 / EU Cosmetics Regulation limits (ScenTree CC BY-NC 4.0).
+            Browse the master ingredient catalog, manage your personal workbench, and inspect volatility tiers and IFRA limits.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddMaterialModal(true)}
-          className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 self-start whitespace-nowrap shrink-0"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Raw Material
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
+          {selectedMaterial && (
+            <button
+              type="button"
+              onClick={() => openTargetFormulaModalForMaterial(selectedMaterial, 2)}
+              className="px-3 py-2 bg-[#111621] hover:bg-slate-800 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Add &quot;{selectedMaterial.name}&quot; to Formula...</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowAddMaterialModal(true)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Raw Material
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

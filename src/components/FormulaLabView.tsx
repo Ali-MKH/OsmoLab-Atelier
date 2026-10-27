@@ -1052,7 +1052,19 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         </div>
       )}
 
-      {/* Top Formula Header & Version Control Bar */}
+      {/* Main Tab Title & One-Sentence Summary */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-sans font-semibold text-white">
+            Formula Lab Workbench
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Compose and normalize fragrance formulas, convert batch units, verify IFRA compliance, and compare version lineages.
+          </p>
+        </div>
+      </div>
+
+      {/* Formula Selector & Version Control Bar */}
       <div className="rounded-lg bg-[#111621] border border-slate-800 p-3.5 sm:p-5 overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">

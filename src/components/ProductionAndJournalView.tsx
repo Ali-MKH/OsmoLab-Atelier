@@ -304,7 +304,7 @@ export const ProductionAndJournalView: React.FC<ProductionAndJournalViewProps> =
             Experimental Journal & Maturation Timeline
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Chronological evaporation and maceration log linked to formula version.
+            Log chronological maceration checkpoints and track how your active formula evolves over time.
           </p>
         </div>
 
@@ -420,7 +420,7 @@ export const ProductionAndJournalView: React.FC<ProductionAndJournalViewProps> =
             Sensory Evaluations & Voice Dictation Studio
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Structured 17-dimension olfactory evaluation templates and fast Hold-to-Record blotter voice notes.
+            Score active formulas across 17 sensory dimensions and capture instant blotter voice notes.
           </p>
         </div>
 
@@ -714,7 +714,7 @@ export const ProductionAndJournalView: React.FC<ProductionAndJournalViewProps> =
           Scent Memory & Blind Recognition Training System
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Train olfactory memory associations, emotional triggers, and empirical blind-smelling recognition accuracy.
+          Build personal odor associations and train your blind-smelling recognition accuracy across raw materials.
         </p>
       </div>
 

@@ -1439,31 +1439,6 @@ export default function App() {
           }}
           className="flex-1 p-3.5 sm:p-6 lg:p-8 lg:px-10 max-w-[1440px] w-full mx-auto min-w-0 space-y-6 sm:space-y-7"
         >
-          {/* Concise Per-Tab Instruction & Purpose Banner */}
-          {TAB_INSTRUCTION_GUIDE[activeNav] && (
-            <div
-              data-testid="tab-instruction-banner"
-              className="rounded-xl bg-[#111621] border border-slate-800/70 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs"
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="p-2 rounded-lg bg-emerald-600/10 border border-emerald-500/25 text-emerald-400 shrink-0 mt-0.5">
-                  <Info className="w-4 h-4" />
-                </div>
-                <div className="space-y-1">
-                  <div className="font-medium text-white text-sm">
-                    {TAB_INSTRUCTION_GUIDE[activeNav].title}
-                  </div>
-                  <p className="text-slate-300 font-normal leading-relaxed">
-                    {TAB_INSTRUCTION_GUIDE[activeNav].summary}{' '}
-                    <span className="text-emerald-400 font-normal">
-                      How to use: {TAB_INSTRUCTION_GUIDE[activeNav].howTo}
-                    </span>
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* 1. DASHBOARD VIEW */}
           {activeNav === 'dashboard' && (
             <TabErrorBoundary
@@ -1472,13 +1447,13 @@ export default function App() {
               onRetry={handleRetryViewData}
             >
             <div className="space-y-8 w-full max-w-full min-w-0">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/70 pb-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/70 pb-4">
                 <div>
                   <h1 className="text-2xl font-sans font-semibold text-white">
                     Perfumery Formulation & Olfactory Learning Studio
                   </h1>
-                  <p className="text-xs text-slate-400 mt-1.5 font-normal">
-                    Active Study: <span className="text-slate-200 font-medium">{activeFormula.name} ({activeFormula.activeVersionLabel})</span> · {materials.length} Raw Materials · {accords.length} Accords · {formulas.length} Formulas
+                  <p className="text-xs text-slate-400 mt-1 font-normal">
+                    Monitor active fragrance formulas, maturation checkpoints, version lineages, and scent memory progress in one workspace.
                   </p>
                 </div>
 
