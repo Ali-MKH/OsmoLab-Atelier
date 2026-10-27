@@ -111,16 +111,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const [showAddAccordModal, setShowAddAccordModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [materialSubTab, setMaterialSubTabState] = useState<
-    'profile' | 'regulatory' | 'usage' | 'memory'
+    'profile' | 'regulatory' | 'memory'
   >(() => {
     try {
       const saved = sessionStorage.getItem('osmolab_material_subtab');
-      if (
-        saved === 'profile' ||
-        saved === 'regulatory' ||
-        saved === 'usage' ||
-        saved === 'memory'
-      ) {
+      if (saved === 'profile' || saved === 'regulatory' || saved === 'memory') {
         return saved;
       }
     } catch {
@@ -129,7 +124,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     return 'profile';
   });
 
-  const setMaterialSubTab = (tab: 'profile' | 'regulatory' | 'usage' | 'memory') => {
+  const setMaterialSubTab = (tab: 'profile' | 'regulatory' | 'memory') => {
     setMaterialSubTabState(tab);
     try {
       sessionStorage.setItem('osmolab_material_subtab', tab);
@@ -769,57 +764,20 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 </div>
               </>
             ) : (
-              <>
-                {/* Dual Regulatory Compliance Slider: IFRA 51st + EU Cosmetics Regulation */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                    Regulatory Limits (IFRA 51st & EU Cosmetics Regulation · ScenTree CC BY-NC 4.0)
-                  </span>
-                  <DualRegulatorySlider
-                    materialName={mat.name}
-                    currentPercent={regLimit?.maxAllowedPercent ? regLimit.maxAllowedPercent * 0.4 : 0.05}
-                    ifraLimitPercent={regLimit?.maxAllowedPercent ?? null}
-                    euLimitPercent={regLimit?.euCosmeticLimitPercent ?? mat.euCosmeticLimitPercent ?? null}
-                    ifraCategory="Cat 4 (Fine Fragrance)"
-                    euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
-                    isEuAllergen={Boolean(regLimit?.euAllergenDeclarable || mat.euAllergenDeclarable)}
-                  />
-                </div>
-
-                {/* Constituents & Allergens Badges */}
-                {regLimit?.allergenBreakdown && regLimit.allergenBreakdown.length > 0 && (
-                  <div className="space-y-2.5">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                      Constituents & allergens
-                    </span>
-                    <div className="space-y-2">
-                      {regLimit.allergenBreakdown.map((item) => (
-                        <div
-                          key={item.name}
-                          className="p-3 rounded-xl bg-[#0B0E14] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                        >
-                          <div>
-                            <div className="font-semibold text-white text-xs">{item.name}</div>
-                            <div className="text-[11px] text-slate-400 font-mono-tabular">
-                              CAS {item.casNumber} · Typical: {item.typicalPercent.toFixed(1)}%
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {item.typicalPercent > item.euThresholdPercent && (
-                              <span className="px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/50 text-amber-300 text-[10px] font-medium">
-                                EU allergen
-                              </span>
-                            )}
-                            <span className="px-2 py-0.5 rounded bg-sky-950/60 border border-sky-600/50 text-sky-300 text-[10px] font-medium">
-                              IFRA limit
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Regulatory Brief Check (IFRA 51st & EU Cosmetics Regulation)
+                </span>
+                <DualRegulatorySlider
+                  materialName={mat.name}
+                  currentPercent={regLimit?.maxAllowedPercent ? regLimit.maxAllowedPercent * 0.4 : 0.05}
+                  ifraLimitPercent={regLimit?.maxAllowedPercent ?? null}
+                  euLimitPercent={regLimit?.euCosmeticLimitPercent ?? mat.euCosmeticLimitPercent ?? null}
+                  ifraCategory="Cat 4 (Fine Fragrance)"
+                  euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
+                  isEuAllergen={Boolean(regLimit?.euAllergenDeclarable || mat.euAllergenDeclarable)}
+                />
+              </div>
             )}
           </div>
 
@@ -841,7 +799,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add to Formula...</span>
+              <span>Add to Formula</span>
             </button>
           </div>
         </div>
@@ -2560,10 +2518,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             <button
               type="button"
               onClick={() => openTargetFormulaModalForMaterial(selectedMaterial, 2)}
-              className="px-3 py-2 bg-[#111621] hover:bg-slate-800 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shrink-0"
+              className="px-3.5 py-2 bg-[#111621] hover:bg-slate-800 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shrink-0"
             >
               <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Add &quot;{selectedMaterial.name}&quot; to Formula...</span>
+              <span>Add to Formula</span>
             </button>
           )}
           <button
@@ -2852,7 +2810,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs font-normal transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5 shrink-0" />
-                    <span>Add to Formula...</span>
+                    <span>Add to Formula</span>
                   </button>
                 </div>
               </div>
@@ -2893,7 +2851,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             </div>
 
             {/* Dossier Sub-Tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-1.5 p-1.5 bg-[#0B0E14] border border-slate-800 rounded-lg text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-[#0B0E14] border border-slate-800 rounded-lg text-xs">
               <button
                 type="button"
                 onClick={() => setMaterialSubTab('profile')}
@@ -2917,18 +2875,6 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span className="truncate">Regulatory Compliance (IFRA 51)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMaterialSubTab('usage')}
-                className={`px-3 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-1.5 min-w-0 ${
-                  materialSubTab === 'usage'
-                    ? 'bg-slate-800 text-white'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FlaskConical className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate">Formula Usage ({materialUsageList.length})</span>
               </button>
               <button
                 type="button"
@@ -3016,7 +2962,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     onClick={() => setMaterialSubTab('regulatory')}
                     className="text-emerald-400 hover:text-emerald-300 font-medium whitespace-nowrap shrink-0 flex items-center gap-1"
                   >
-                    View Full Regulatory Compliance Table →
+                    View Regulatory Brief Check →
                   </button>
                 </div>
               </div>
@@ -3139,207 +3085,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   )}
                 </div>
-
-                {/* 2. Restricted Use Levels Data Table Across IFRA Product Categories */}
-                {selectedLimit?.categoryLimitsTable && selectedLimit.categoryLimitsTable.length > 0 && (
-                  <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                          <Scale className="w-3.5 h-3.5 text-emerald-400" />
-                          Maximum Permitted Concentration Across IFRA Categories (51st Amendment)
-                        </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Maximum permitted weight concentration in finished commercial end-products.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto rounded border border-slate-800 w-full max-w-full">
-                      <table className="w-full min-w-[550px] text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-800 bg-[#0B0E14] text-[11px] text-slate-400">
-                            <th className="py-2.5 px-3.5 font-medium">Category</th>
-                            <th className="py-2.5 px-3.5 font-medium">Application Product Class</th>
-                            <th className="py-2.5 px-3.5 font-medium text-right">Maximum Permitted %</th>
-                            <th className="py-2.5 px-3.5 font-medium">Exposure Route / Description</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/70 font-mono-tabular">
-                          {selectedLimit.categoryLimitsTable.map((cat) => {
-                            const isFineFragrance = cat.category === 'Cat 4';
-                            return (
-                              <tr
-                                key={cat.category}
-                                className={`transition-colors ${
-                                  isFineFragrance
-                                    ? 'bg-emerald-950/20 font-semibold'
-                                    : 'hover:bg-slate-800/30'
-                                }`}
-                              >
-                                <td className="py-2.5 px-3.5 text-emerald-400">
-                                  {cat.category}
-                                </td>
-                                <td className="py-2.5 px-3.5 font-sans font-medium text-white">
-                                  {cat.categoryName} {isFineFragrance && '(Active Focus)'}
-                                </td>
-                                <td className="py-2.5 px-3.5 text-right font-semibold text-white">
-                                  {cat.maxAllowedPercent !== null
-                                    ? `${cat.maxAllowedPercent.toFixed(2)}%`
-                                    : 'Not Permitted / Restricted'}
-                                </td>
-                                <td className="py-2.5 px-3.5 font-sans text-slate-400 text-[11px]">
-                                  {cat.description}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Allergen Concentrations Data Table (EU 1223/2009 & IFRA Annex) */}
-                {selectedLimit?.allergenBreakdown && selectedLimit.allergenBreakdown.length > 0 && (
-                  <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                          <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                          Regulated Fragrance Allergens & Constituent Breakdown (EU 1223/2009)
-                        </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Concentrations triggering mandatory on-pack cosmetic ingredient declaration (&gt; 0.001% leave-on / &gt; 0.01% rinse-off).
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto rounded border border-slate-800">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-800 bg-[#0B0E14] text-[11px] text-slate-400">
-                            <th className="py-2.5 px-3.5 font-medium">Allergen Constituent</th>
-                            <th className="py-2.5 px-3.5 font-medium">CAS Number</th>
-                            <th className="py-2.5 px-3.5 font-medium text-right">Typical % in Material</th>
-                            <th className="py-2.5 px-3.5 font-medium text-right">Declaration Threshold</th>
-                            <th className="py-2.5 px-3.5 font-medium">Toxicological Risk / Sensitization Note</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/70">
-                          {selectedLimit.allergenBreakdown.map((alg) => (
-                            <tr key={alg.name} className="hover:bg-slate-800/30">
-                              <td className="py-2.5 px-3.5 font-medium text-white">{alg.name}</td>
-                              <td className="py-2.5 px-3.5 font-mono-tabular text-slate-400">{alg.casNumber}</td>
-                              <td className="py-2.5 px-3.5 text-right font-mono-tabular font-semibold text-emerald-400">
-                                {alg.typicalPercent.toFixed(2)}%
-                              </td>
-                              <td className="py-2.5 px-3.5 text-right font-mono-tabular text-slate-300">
-                                {alg.euThresholdPercent}% (10 ppm)
-                              </td>
-                              <td className="py-2.5 px-3.5 text-slate-300 text-[11px] leading-relaxed">
-                                {alg.riskNote}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Chemical Specifications & Purity Requirements */}
-                {selectedLimit?.puritySpecifications && selectedLimit.puritySpecifications.length > 0 && (
-                  <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-3">
-                    <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                      IFRA Quality & Purity Specifications
-                    </h4>
-                    <div className="overflow-x-auto rounded border border-slate-800">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-800 bg-[#0B0E14] text-[11px] text-slate-400">
-                            <th className="py-2.5 px-3.5 font-medium">Specification Parameter</th>
-                            <th className="py-2.5 px-3.5 font-medium">Standard Limit</th>
-                            <th className="py-2.5 px-3.5 font-medium">Test Protocol</th>
-                            <th className="py-2.5 px-3.5 font-medium">Compounding & Handling Requirement</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/70">
-                          {selectedLimit.puritySpecifications.map((spec) => (
-                            <tr key={spec.parameter} className="hover:bg-slate-800/30">
-                              <td className="py-2.5 px-3.5 font-medium text-white">{spec.parameter}</td>
-                              <td className="py-2.5 px-3.5 font-mono-tabular font-semibold text-amber-300">
-                                {spec.standardLimit}
-                              </td>
-                              <td className="py-2.5 px-3.5 font-mono-tabular text-slate-400">{spec.testMethod}</td>
-                              <td className="py-2.5 px-3.5 text-slate-300 text-[11px]">{spec.complianceRequirement}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
-            {/* TAB 3: FORMULA USAGE INTELLIGENCE */}
-            {materialSubTab === 'usage' && (
-              <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                    <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
-                    Material Usage Intelligence — Used In ({materialUsageList.length} Formulations)
-                  </h3>
-                  <span className="text-[11px] text-slate-400">
-                    Historical dosage & empirical effectiveness
-                  </span>
-                </div>
-
-                {materialUsageList.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-4 text-center">
-                    Not yet used in any saved formula versions. Add {selectedMaterial.name} in Formula Lab to track historical performance.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {materialUsageList.map((u, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded bg-[#0B0E14] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-white">
-                              {u.formulaName} ({u.versionLabel})
-                            </span>
-                            <span className="font-mono-tabular text-emerald-400 font-semibold">
-                              {u.percentage}%
-                            </span>
-                            <span className="text-slate-500">·</span>
-                            <span className="font-mono-tabular text-amber-300">
-                              Effectiveness: {u.effectiveness}/10
-                            </span>
-                          </div>
-                          <p className="text-slate-400 text-[11px] mt-0.5">
-                            Observation: {u.observation}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => onOpenFormula(u.formulaId, u.versionLabel)}
-                          className="text-emerald-400 hover:text-emerald-300 text-[11px] font-medium whitespace-nowrap shrink-0"
-                        >
-                          Inspect Formula →
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 4: PERSONAL SENSORY MEMORY */}
+            {/* TAB 3: PERSONAL SENSORY MEMORY */}
             {materialSubTab === 'memory' && (
               <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-4 text-xs">
                 <h3 className="font-semibold text-white flex items-center gap-1.5">
