@@ -1080,30 +1080,30 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden">
         {/* Top Bar Contract: Responsive across all viewports (320px - 1920px+) with z-40 stacking above main stage */}
         <header className="relative z-40 w-full max-w-full grid grid-cols-1 gap-2 px-3 sm:px-5 py-2.5 border-b border-slate-800/90 bg-[#0E121B]">
-          {/* Row 1: CSS Grid split between flexible truncating Brand Title and auto-sized Action Controls */}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3 w-full min-w-0">
+          {/* Row 1: Flexible wrapping top row with shrink-0 Brand Title and Action Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 w-full min-w-0">
             {/* Zone 1: Brand / Mobile menu trigger */}
-            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(true)}
                 aria-label="Open mobile navigation"
                 className="lg:hidden h-8 w-8 sm:h-9 sm:w-9 flex items-center justify-center rounded-md text-slate-300 hover:text-white bg-slate-800 shrink-0"
               >
-                <Menu className="w-4 h-4" />
+                <Menu className="w-4 h-4 shrink-0" />
               </button>
               <button
                 type="button"
                 onClick={() => setActiveNav('dashboard')}
                 title="Return to Studio Overview Dashboard"
-                className="min-w-0 text-sm sm:text-base font-sans font-bold tracking-tight text-white truncate hover:text-emerald-400 transition-colors py-1 text-left"
+                className="shrink-0 whitespace-nowrap text-sm sm:text-base font-sans font-bold tracking-tight text-white hover:text-emerald-400 transition-colors py-1 text-left"
               >
                 {t('appTitle', lang)}
               </button>
             </div>
 
             {/* Zone 3: Primary Actions (Dark/Light Mode, Theme Palette Picker, Language, PWA, Search) */}
-            <div className="flex items-center justify-end gap-1 sm:gap-1.5 md:gap-2 shrink-0 min-w-0">
+            <div className="flex items-center justify-end gap-1 sm:gap-1.5 md:gap-2 shrink-0 ml-auto">
               {/* Quick 1-Click Dark / Day (White & Silver) Mode Toggle */}
               <button
                 type="button"
@@ -1141,7 +1141,7 @@ export default function App() {
                   className="h-8 px-2 sm:px-2.5 text-xs font-medium text-slate-200 bg-[#111621] border border-slate-800 rounded-md hover:border-slate-700 transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
                 >
                   <Palette className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="hidden md:inline capitalize font-mono text-[11px] max-w-[105px] xl:max-w-[150px] truncate">
+                  <span className="hidden md:inline capitalize font-mono text-[11px] shrink-0 whitespace-nowrap">
                     {THEME_OPTIONS.find((t) => t.id === theme)?.name || theme}
                   </span>
                 </button>

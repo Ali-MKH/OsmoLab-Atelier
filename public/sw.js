@@ -1,15 +1,16 @@
-const CACHE_NAME = 'osmolab-pwa-v2';
+const CACHE_NAME = 'osmolab-pwa-v3';
 const PRECACHE_ASSETS = [
   '/manifest.webmanifest',
-  '/icons/icon-192.svg',
-  '/icons/icon-512.svg',
+  '/icon.svg',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_ASSETS))
+      .then((cache) => cache.addAll(PRECACHE_ASSETS).catch(() => {}))
       .then(() => self.skipWaiting())
   );
 });
@@ -36,27 +37,21 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Never intercept API calls, Vite dev/HMR endpoints, or raw source module requests
+  // Never intercept API calls, Vite dev/HMR endpoints, navigation, or raw source module requests
   if (
+    request.mode === 'navigate' ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/src/') ||
     url.pathname.startsWith('/@') ||
     url.pathname.startsWith('/node_modules/') ||
     url.search.includes('t=') ||
-    url.search.includes('v=')
+    url.search.includes('v=') ||
+    url.search.includes('dev-sw')
   ) {
     return;
   }
 
-  // Network-first for HTML navigation requests; preserve hash/state seamlessly
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() => caches.match('/index.html'))
-    );
-    return;
-  }
-
-  // Network-first with cache fallback for static production assets
+  // Network-first with safe cache fallback for static assets
   event.respondWith(
     fetch(request)
       .then((networkResponse) => {
@@ -66,12 +61,18 @@ self.addEventListener('fetch', (event) => {
           networkResponse.type === 'basic'
         ) {
           const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
-          });
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => {
+              cache.put(request, responseToCache);
+            })
+            .catch(() => {});
         }
         return networkResponse;
       })
-      .catch(() => caches.match(request))
+      .catch(async () => {
+        const cached = await caches.match(request);
+        return cached || Response.error();
+      })
   );
 });

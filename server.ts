@@ -88,14 +88,20 @@ async function startServer() {
     next();
   });
 
-  // Serve Web App Manifest and Service Worker with strict PWA MIME types & CORS headers for PWABuilder
-  app.get(['/manifest.webmanifest', '/manifest.json'], (_req, res) => {
+  // Serve Web App Manifest and Service Worker with strict PWA MIME types & CORS headers
+  app.get(['/manifest.webmanifest', '/manifest.json'], (req, res) => {
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const requestOrigin = req.headers.origin;
+    if (requestOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
     res.sendFile(path.join(__dirname, 'public', 'manifest.webmanifest'));
   });
 
-  app.get('/sw.js', (_req, res) => {
+  app.get(['/sw.js', '/dev-sw.js', '/registerSW.js'], (_req, res) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Service-Worker-Allowed', '/');
     res.setHeader('Cache-Control', 'no-cache');
@@ -531,7 +537,7 @@ Student Request: ${userPrompt}`;
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
