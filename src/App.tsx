@@ -26,11 +26,14 @@ import {
   CurrencySettings,
   DEFAULT_CURRENCY_SETTINGS,
 } from './domain/currency-and-cost';
-import { OlfactoryWheelView } from './components/OlfactoryWheelView';
-import { OlfactoryPyramidView } from './components/OlfactoryPyramidView';
-import { FormulaLabView } from './components/FormulaLabView';
-import { MaterialsAndInventoryView } from './components/MaterialsAndInventoryView';
-import { ProductionAndJournalView } from './components/ProductionAndJournalView';
+import {
+  OlfactoryWheelView,
+  OlfactoryPyramidView,
+  FormulaLabView,
+} from './features/formula/FormulaLabView';
+import { MaterialCatalogView } from './features/catalog/MaterialCatalogView';
+import { EvaluationAndJournalView } from './features/evaluation/EvaluationAndJournalView';
+import { fetchCatalogApi } from './api/client';
 import {
   OlfactoryMentorView,
   GlobalSearchView,
@@ -646,14 +649,12 @@ export default function App() {
     }
   }, [idToken, getAuthHeaders, applyServerWorkspace]);
 
-  // Hydrate the full 815-material v1.1 Global Catalog immediately on mount
+  // Hydrate the full 815-material v1.1 Global Catalog immediately on mount via bounded API
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/catalog');
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
+        const data = await fetchCatalogApi({ limit: 1000, offset: 0 });
         if (cancelled) return;
         if (Array.isArray(data.materials) && data.materials.length > 0 && !idToken) {
           setMaterials(data.materials as RawMaterial[]);
@@ -1962,7 +1963,7 @@ export default function App() {
               sectionTitle={TAB_INSTRUCTION_GUIDE[activeNav].title}
               onRetry={handleRetryViewData}
             >
-            <MaterialsAndInventoryView
+            <MaterialCatalogView
               mode={activeNav === 'raw-materials' ? 'materials' : 'accords'}
               materials={materials}
               selectedMaterialId={selectedMaterialId}
@@ -2280,7 +2281,7 @@ export default function App() {
               sectionTitle={TAB_INSTRUCTION_GUIDE[activeNav].title}
               onRetry={handleRetryViewData}
             >
-            <ProductionAndJournalView
+            <EvaluationAndJournalView
               mode={
                 activeNav === 'experiments'
                   ? 'experiments'

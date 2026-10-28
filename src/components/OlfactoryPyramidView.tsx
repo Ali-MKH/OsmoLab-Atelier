@@ -7,6 +7,7 @@ import {
   FormulaLineItem,
 } from '../domain/types';
 import { AppLanguage, t, getDir, computeUniformIsoscelesTrapezoids } from '../domain/i18n';
+import { resolveEffectiveMaterialPyramidMetadata } from '../domain/formula-engine';
 import { VerticalVolumeControl } from './VerticalVolumeControl';
 import {
   Layers,
@@ -194,39 +195,35 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
       (v) => v.versionLabel === activeFormula.activeVersionLabel
     ) || activeFormula.versions[0];
 
-  // Helper to categorize raw materials into the 5 pyramid tiers
+  // Categorize raw materials into the 5 pyramid tiers using v1.1 pyramid metadata + user Shelf override
   const getMaterialPyramidTier = (mat: RawMaterial): PyramidTierId => {
     const lowerName = mat.name.toLowerCase();
     if (customItemTiers[lowerName]) {
       return customItemTiers[lowerName];
     }
-    // Galbanum starts in Top Notes so Top-to-Heart Bridge starts as an interactive Empty Tier
-    if (lowerName.includes('galbanum')) return 'top';
-    if (mat.volatility === 'Top') return 'top';
-    if (mat.volatility === 'Top-Heart') return 'top-heart';
-    if (mat.volatility === 'Heart') return 'heart';
-    if (mat.volatility === 'Heart-Base') return 'heart-base';
-    if (mat.volatility === 'Base') {
-      if (lowerName.includes('cashmeran')) return 'heart-base';
+    const resolved = resolveEffectiveMaterialPyramidMetadata(mat);
+    if (resolved.tierId === 'none') {
       return 'base';
     }
-    return 'heart';
+    return resolved.tierId;
   };
 
-  // Resolve tier for a specific formula line item (honoring explicit tier tags or overrides)
+  // Resolve tier for a specific formula line item (honoring explicit formula-context tier tags or user Shelf overrides)
   const getFormulaItemTier = (item: FormulaLineItem): PyramidTierId => {
     const lowerName = item.name.toLowerCase();
     if (customItemTiers[lowerName]) {
       return customItemTiers[lowerName];
     }
     const tagMatch = item.notes?.match(/\[tier:(top|top-heart|heart|heart-base|base)\]/i);
-    if (tagMatch) {
-      return tagMatch[1].toLowerCase() as PyramidTierId;
-    }
+    const formulaTierOverride = tagMatch ? tagMatch[1].toLowerCase() : null;
     const mat = materials.find(
       (m) => m.id === item.materialId || m.name.toLowerCase() === lowerName
     );
-    return mat ? getMaterialPyramidTier(mat) : 'heart';
+    if (mat) {
+      const resolved = resolveEffectiveMaterialPyramidMetadata(mat, formulaTierOverride);
+      return resolved.tierId === 'none' ? 'base' : resolved.tierId;
+    }
+    return (formulaTierOverride as PyramidTierId) || 'heart';
   };
 
   // Compute active formula weight distribution across the 5 tiers

@@ -26,6 +26,7 @@ import {
 } from '../domain/formula-engine';
 import { FormulaFacetRadarChart } from './FormulaFacetRadarChart';
 import { DualRegulatorySlider } from './DualRegulatorySlider';
+import { FormulaIngredientPicker } from '../features/formula/FormulaIngredientPicker';
 import {
   evaluateFormulaSafety,
   autoCapMaterialToIfraLimit,

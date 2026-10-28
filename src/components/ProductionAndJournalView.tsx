@@ -829,3 +829,7 @@ export const ProductionAndJournalView: React.FC<ProductionAndJournalViewProps> =
     </div>
   );
 };
+
+export const EvaluationAndJournalView = ProductionAndJournalView;
+export type EvaluationAndJournalViewProps = ProductionAndJournalViewProps;
+

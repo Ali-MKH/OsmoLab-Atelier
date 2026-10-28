@@ -35,7 +35,8 @@ export type PyramidUiCode =
   | 'B'
   | 'THB'
   | 'TB'
-  | 'NA';
+  | 'NA'
+  | 'NONE';
 
 export type PyramidConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
 

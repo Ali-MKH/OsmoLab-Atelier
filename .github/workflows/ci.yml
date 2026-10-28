@@ -1,0 +1,44 @@
+name: OsmoLab Atelier CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    name: Typecheck, Lint, Catalog Import, Test & Build
+    runs-on: ubuntu-latest
+
+    env:
+      PERSISTENCE_MODE: memory
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify canonical v1.1 catalog import & seed integrity
+        run: npm run catalog:import
+
+      - name: Run strict TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run ESLint architectural & code lint
+        run: npm run lint
+
+      - name: Run unit & integration test suite
+        run: npm test
+
+      - name: Build production frontend bundle
+        run: npm run build

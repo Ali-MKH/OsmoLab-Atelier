@@ -7,12 +7,15 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { requireAuth, type AuthRequest } from './src/middleware/auth.ts';
 import {
   assertStrictTenantPayload,
-  SecurityPolicyViolationError,
   OSMOLAB_SECURITY_CONTROLS,
-  sanitizeBoundedString,
 } from './src/domain/security-policy.ts';
 import {
   fetchFullWorkspace,
+  fetchBootstrapInfo,
+  queryCatalogMaterials,
+  getCatalogMaterialDetail,
+  getCatalogMaterialRegulatoryDossier,
+  toggleUserWorkbenchPin,
   createMaterialInDb,
   saveFormulaAndVersionInDb,
   addExperimentEntryInDb,
@@ -26,11 +29,19 @@ import {
   addToUserShelf,
   updateUserShelfItem,
   removeFromUserShelf,
-  ShelfValidationError,
-  FormulaIntegrityError,
 } from './src/db/workspace-repo.ts';
-import { PersistenceModeError } from './src/db/index.ts';
-import { loadGlobalCatalogV11 } from './src/db/catalog-v1-1.ts';
+import {
+  formatStandardizedApiError,
+  validateAccordPayload,
+  validateCatalogQuery,
+  validateCreateMaterialPayload,
+  validateEvaluationPayload,
+  validateExperimentPayload,
+  validatePositiveIntId,
+  validateSaveFormulaPayload,
+  validateScentMemoryPayload,
+  validateShelfMutationPayload,
+} from './src/api/validation.ts';
 
 dotenv.config();
 
@@ -42,38 +53,13 @@ const rateLimitBuckets = new Map<string, { count: number; resetAtMs: number }>()
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 120;
 
-function sendSafeRouteError(res: express.Response, error: unknown, fallbackMessage: string) {
-  if (error instanceof SecurityPolicyViolationError) {
-    return res.status(error.statusCode).json({
-      error: error.message,
-      code: error.code,
-    });
-  }
-  if (error instanceof PersistenceModeError) {
-    return res.status(error.statusCode).json({
-      error: error.message,
-      code: 'PERSISTENCE_MODE_ERROR',
-    });
-  }
-  if (error instanceof ShelfValidationError) {
-    return res.status(error.statusCode).json({
-      error: error.message,
-      code: 'SHELF_VALIDATION_ERROR',
-    });
-  }
-  if (error instanceof FormulaIntegrityError) {
-    return res.status(error.statusCode).json({
-      error: error.message,
-      code: 'FORMULA_INTEGRITY_ERROR',
-    });
-  }
-  if (error instanceof Error && error.message.startsWith('Forbidden:')) {
-    return res.status(403).json({
-      error: error.message,
-      code: 'CROSS_TENANT_ACCESS_DENIED',
-    });
-  }
-  return res.status(500).json({ error: fallbackMessage });
+function sendSafeRouteError(
+  res: express.Response,
+  error: unknown,
+  fallbackMessage: string
+) {
+  const { statusCode, body } = formatStandardizedApiError(error, fallbackMessage);
+  return res.status(statusCode).json(body);
 }
 
 async function startServer() {
@@ -94,20 +80,28 @@ async function startServer() {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 
     if (req.path.startsWith('/api/')) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, private'
+      );
       res.setHeader('Pragma', 'no-cache');
 
       const clientKey = req.ip || req.socket.remoteAddress || 'local';
       const now = Date.now();
       const bucket = rateLimitBuckets.get(clientKey);
       if (!bucket || now >= bucket.resetAtMs) {
-        rateLimitBuckets.set(clientKey, { count: 1, resetAtMs: now + RATE_LIMIT_WINDOW_MS });
+        rateLimitBuckets.set(clientKey, {
+          count: 1,
+          resetAtMs: now + RATE_LIMIT_WINDOW_MS,
+        });
       } else {
         bucket.count += 1;
         if (bucket.count > RATE_LIMIT_MAX_REQUESTS) {
           return res.status(429).json({
-            error: 'Too many requests: rate limit exceeded. Please wait before retrying.',
+            error:
+              'Too many requests: rate limit exceeded. Please wait before retrying.',
             code: 'RATE_LIMIT_EXCEEDED',
+            details: [],
           });
         }
       }
@@ -140,10 +134,10 @@ async function startServer() {
   app.get('/api/security/audit', (_req, res) => {
     res.json({
       status: 'HARDENED',
-      standard: 'Google Zero-Trust & Firestore ABAC Eight Pillars',
+      standard: 'Firebase Auth RS256 + Express Boundary Validation + PostgreSQL Tenant Isolation',
       auditedAtIso: new Date().toISOString(),
       invariants: {
-        firestoreDefaultDenyCatchAll: true,
+        tokenRevocationCheckEnabled: true,
         strictOwnerIsolation: true,
         verifiedEmailRequiredForWrites: true,
         unauthenticatedHeaderSpoofingBlocked: true,
@@ -154,25 +148,78 @@ async function startServer() {
     });
   });
 
-  // 0b. Public Read-Only Global Catalog Endpoint (815 canonical v1.1 materials + regulatory records, zero user data)
-  app.get('/api/catalog', (_req, res) => {
+  // 1. Lightweight Bootstrap Endpoint (user profile, navigation settings, and entity counts)
+  app.get('/api/bootstrap', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const catalog = loadGlobalCatalogV11();
-      res.json({
-        totalCatalogMaterials: catalog.materials.length,
-        materials: catalog.materials,
-        regulatoryLimits: catalog.regulatoryLimits,
-        regulatoryRecords: catalog.regulatoryRecords,
-        constituents: catalog.constituents,
-      });
+      const uid = req.workspaceUid!;
+      const email = req.workspaceEmail || 'perfumer@atelier.local';
+      const bootstrap = await fetchBootstrapInfo(uid, email);
+      res.json(bootstrap);
     } catch (error: unknown) {
-      sendSafeRouteError(res, error, 'Failed to load global catalog');
+      sendSafeRouteError(res, error, 'Failed to load workspace bootstrap');
     }
   });
 
-  // 1. Fetch full workspace (strictly requires verified Firebase Auth JWT)
+  // 2. Bounded Global Catalog Endpoint (supports search, family, origin, noteRole, pyramidCode, shelfOnly, workbenchOnly, limit, offset)
+  app.get('/api/catalog', async (req, res) => {
+    try {
+      const validated = validateCatalogQuery(
+        req.query as Record<string, unknown>
+      );
+      const result = await queryCatalogMaterials({
+        search: validated.search,
+        family: validated.family,
+        origin: validated.origin,
+        noteRole: validated.noteRole,
+        pyramidCode: validated.pyramidCode,
+        shelfOnly: validated.shelfOnly,
+        workbenchOnly: validated.workbenchOnly,
+        includeRegulatory: validated.includeRegulatory,
+        limit: validated.limit,
+        offset: validated.offset,
+      });
+      res.json(result);
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load catalog');
+    }
+  });
+
+  // 2b. Single Catalog Material Detail Endpoint
+  app.get('/api/catalog/:materialId', async (req, res) => {
+    try {
+      const materialId = validatePositiveIntId(
+        req.params.materialId,
+        'materialId'
+      );
+      const detail = await getCatalogMaterialDetail(materialId);
+      res.json(detail);
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load material details');
+    }
+  });
+
+  // 2c. On-Demand Material Regulatory Dossier Endpoint
+  app.get('/api/catalog/:materialId/regulatory', async (req, res) => {
+    try {
+      const materialId = validatePositiveIntId(
+        req.params.materialId,
+        'materialId'
+      );
+      const dossier = await getCatalogMaterialRegulatoryDossier(materialId);
+      res.json(dossier);
+    } catch (error: unknown) {
+      sendSafeRouteError(
+        res,
+        error,
+        'Failed to load material regulatory dossier'
+      );
+    }
+  });
+
+  // 3. Deprecated Monolithic Workspace Endpoint (maintained for backward compatibility)
   app.get('/api/workspace', requireAuth, async (req: AuthRequest, res) => {
     try {
+      res.setHeader('Deprecation', 'true');
       const uid = req.workspaceUid!;
       const email = req.workspaceEmail || 'perfumer@atelier.local';
       const data = await fetchFullWorkspace(uid, email);
@@ -182,167 +229,430 @@ async function startServer() {
     }
   });
 
-  // 1b. User Shelf & Workbench API (Global Catalog -> My Shelf -> Current Workbench -> Formula)
+  // 4. User Shelf & Current Workbench API (Catalog -> My Shelf -> Current Workbench -> Formula)
   app.get('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       const shelf = await getUserShelf(uid);
-      res.json({ shelf });
+      res.json({
+        shelf,
+        shelfCount: shelf.length,
+        workbenchCount: shelf.filter((item) => item.isOnWorkbench).length,
+      });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load user shelf');
     }
   });
 
-  app.post('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
+  app.post('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body || {}, uid);
-      const materialId = Number(req.params.materialId);
-      const item = await addToUserShelf(uid, materialId, req.body || {});
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ item, shelf: workspace.userShelf, workspace });
+      const materialId = validatePositiveIntId(
+        req.body?.materialId,
+        'materialId'
+      );
+      const validated = validateShelfMutationPayload(req.body || {});
+      const item = await addToUserShelf(uid, materialId, validated);
+      const shelf = await getUserShelf(uid);
+      res.json({ item, shelf });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
     }
   });
 
-  app.patch('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-      const uid = req.workspaceUid!;
-      assertStrictTenantPayload(req.body || {}, uid);
-      const materialId = Number(req.params.materialId);
-      const item = await updateUserShelfItem(uid, materialId, req.body || {});
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ item, shelf: workspace.userShelf, workspace });
-    } catch (error: unknown) {
-      sendSafeRouteError(res, error, 'Failed to update My Shelf item');
+  app.post(
+    '/api/shelf/:materialId',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        assertStrictTenantPayload(req.body || {}, uid);
+        const materialId = validatePositiveIntId(
+          req.params.materialId,
+          'materialId'
+        );
+        const validated = validateShelfMutationPayload(req.body || {});
+        const item = await addToUserShelf(uid, materialId, validated);
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ item, shelf: workspace.userShelf, workspace });
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
+      }
     }
-  });
+  );
 
-  app.delete('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-      const uid = req.workspaceUid!;
-      const materialId = Number(req.params.materialId);
-      const result = await removeFromUserShelf(uid, materialId);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ ...result, shelf: workspace.userShelf, workspace });
-    } catch (error: unknown) {
-      sendSafeRouteError(res, error, 'Failed to remove material from My Shelf');
+  app.patch(
+    '/api/shelf/:materialId',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        assertStrictTenantPayload(req.body || {}, uid);
+        const materialId = validatePositiveIntId(
+          req.params.materialId,
+          'materialId'
+        );
+        const validated = validateShelfMutationPayload(req.body || {});
+        const item = await updateUserShelfItem(uid, materialId, validated);
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ item, shelf: workspace.userShelf, workspace });
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to update My Shelf item');
+      }
     }
-  });
+  );
 
-  // 2. Create Raw Material
+  app.post(
+    '/api/shelf/:materialId/workbench',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        assertStrictTenantPayload(req.body || {}, uid);
+        const materialId = validatePositiveIntId(
+          req.params.materialId,
+          'materialId'
+        );
+        const isOnWorkbench =
+          req.body?.isOnWorkbench !== undefined
+            ? Boolean(req.body.isOnWorkbench)
+            : undefined;
+        const item = await toggleUserWorkbenchPin(
+          uid,
+          materialId,
+          isOnWorkbench
+        );
+        const shelf = await getUserShelf(uid);
+        res.json({ item, shelf });
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to update Workbench pin');
+      }
+    }
+  );
+
+  app.delete(
+    '/api/shelf/:materialId',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        const materialId = validatePositiveIntId(
+          req.params.materialId,
+          'materialId'
+        );
+        const result = await removeFromUserShelf(uid, materialId);
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ ...result, shelf: workspace.userShelf, workspace });
+      } catch (error: unknown) {
+        sendSafeRouteError(
+          res,
+          error,
+          'Failed to remove material from My Shelf'
+        );
+      }
+    }
+  );
+
+  // 5. Create Custom User Raw Material
   app.post('/api/materials', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await createMaterialInDb(uid, {
-        ...req.body,
-        name: sanitizeBoundedString(req.body?.name, 160, 'Unnamed Material'),
-      });
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const validated = validateCreateMaterialPayload(req.body);
+      await createMaterialInDb(
+        uid,
+        validated as Parameters<typeof createMaterialInDb>[1]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to create material');
     }
   });
 
-  // 3. Save Formula & Version (Commit or Branch)
-  app.post('/api/formulas/save', requireAuth, async (req: AuthRequest, res) => {
+  // 6. Bounded Formulas & Formula Versions API
+  app.get('/api/formulas', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ formulas: ws.formulas, total: ws.formulas.length });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load formulas');
+    }
+  });
+
+  app.get(
+    '/api/formulas/:formulaId',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        const formulaId = validatePositiveIntId(
+          req.params.formulaId,
+          'formulaId'
+        );
+        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+        const formula = ws.formulas.find((f) => f.id === formulaId);
+        if (!formula) {
+          throw new Error(`NotFound: Formula #${formulaId} not found.`);
+        }
+        res.json({ formula });
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to load formula');
+      }
+    }
+  );
+
+  app.get(
+    '/api/formulas/:formulaId/versions',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        const formulaId = validatePositiveIntId(
+          req.params.formulaId,
+          'formulaId'
+        );
+        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+        const formula = ws.formulas.find((f) => f.id === formulaId);
+        if (!formula) {
+          throw new Error(`NotFound: Formula #${formulaId} not found.`);
+        }
+        res.json({
+          formulaId: formula.id,
+          activeVersionLabel: formula.activeVersionLabel,
+          versions: formula.versions,
+        });
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to load formula versions');
+      }
+    }
+  );
+
+  const handleSaveFormulaRoute = async (
+    req: AuthRequest,
+    res: express.Response
+  ) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      const { formula, version } = req.body;
+      const { formula, version } = validateSaveFormulaPayload(req.body);
       assertStrictTenantPayload(formula, uid);
       assertStrictTenantPayload(version, uid);
-      await saveFormulaAndVersionInDb(uid, formula, version);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      await saveFormulaAndVersionInDb(
+        uid,
+        formula as Parameters<typeof saveFormulaAndVersionInDb>[1],
+        version as Parameters<typeof saveFormulaAndVersionInDb>[2]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save formula version');
     }
+  };
+
+  app.post('/api/formulas/save', requireAuth, handleSaveFormulaRoute);
+  app.post('/api/formulas', requireAuth, handleSaveFormulaRoute);
+
+  // 7. Bounded Experimental Journal Observations API
+  app.get('/api/experiments', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const formulaIdParam = req.query.formulaId
+        ? validatePositiveIntId(req.query.formulaId, 'formulaId')
+        : null;
+      const items = formulaIdParam
+        ? ws.experiments.filter((e) => e.formulaId === formulaIdParam)
+        : ws.experiments;
+      res.json({ experiments: items, total: items.length });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load experiments');
+    }
   });
 
-  // 6. Add Experimental Journal Observation
   app.post('/api/experiments', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await addExperimentEntryInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const validated = validateExperimentPayload(req.body);
+      await addExperimentEntryInDb(
+        uid,
+        validated as Parameters<typeof addExperimentEntryInDb>[1]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add experiment entry');
     }
   });
 
-  // 7. Add Sensory Evaluation (with Voice Transcript support)
+  // 8. Bounded Sensory Evaluations API
+  app.get('/api/evaluations', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const formulaIdParam = req.query.formulaId
+        ? validatePositiveIntId(req.query.formulaId, 'formulaId')
+        : null;
+      const items = formulaIdParam
+        ? ws.evaluations.filter((e) => e.formulaId === formulaIdParam)
+        : ws.evaluations;
+      res.json({ evaluations: items, total: items.length });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load evaluations');
+    }
+  });
+
   app.post('/api/evaluations', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await addEvaluationInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const validated = validateEvaluationPayload(req.body);
+      await addEvaluationInDb(
+        uid,
+        validated as Parameters<typeof addEvaluationInDb>[1]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save sensory evaluation');
     }
   });
 
-  // 8. Upsert Personal Scent Memory & Blind Recognition Record
+  // 9. Bounded Personal Scent Memory & Blind Recognition API
+  app.get('/api/memories', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const materialIdParam = req.query.materialId
+        ? validatePositiveIntId(req.query.materialId, 'materialId')
+        : null;
+      const items = materialIdParam
+        ? ws.scentMemories.filter((m) => m.materialId === materialIdParam)
+        : ws.scentMemories;
+      res.json({ scentMemories: items, total: items.length });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load scent memories');
+    }
+  });
+
   app.post('/api/memories', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await upsertScentMemoryInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const validated = validateScentMemoryPayload(req.body);
+      await upsertScentMemoryInDb(
+        uid,
+        validated as Parameters<typeof upsertScentMemoryInDb>[1]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update scent memory');
     }
   });
 
-  // 9. Create Accord
+  // 10. Bounded Accords & Accord Versions API
+  app.get('/api/accords', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ accords: ws.accords, total: ws.accords.length });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load accords');
+    }
+  });
+
   app.post('/api/accords', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await createAccordInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const validated = validateAccordPayload(req.body);
+      await createAccordInDb(
+        uid,
+        validated as Parameters<typeof createAccordInDb>[1]
+      );
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save accord');
     }
   });
 
-  // 9b. Create New Accord Version Snapshot (preserves historical formula accord references)
-  app.post('/api/accords/:accordId/versions', requireAuth, async (req: AuthRequest, res) => {
-    try {
-      const uid = req.workspaceUid!;
-      assertStrictTenantPayload(req.body, uid);
-      const accordId = Number(req.params.accordId);
-      await updateAccordAndCreateVersion(uid, accordId, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json(workspace);
-    } catch (error: unknown) {
-      sendSafeRouteError(res, error, 'Failed to create accord version');
+  app.post(
+    '/api/accords/:accordId/versions',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      try {
+        const uid = req.workspaceUid!;
+        assertStrictTenantPayload(req.body, uid);
+        const accordId = validatePositiveIntId(
+          req.params.accordId,
+          'accordId'
+        );
+        const validated = validateAccordPayload(req.body);
+        await updateAccordAndCreateVersion(
+          uid,
+          accordId,
+          validated as Parameters<typeof updateAccordAndCreateVersion>[2]
+        );
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json(workspace);
+      } catch (error: unknown) {
+        sendSafeRouteError(res, error, 'Failed to create accord version');
+      }
     }
-  });
+  );
 
-  // 10. Update User Profile & Settings
+  // 11. Update User Profile & Settings
   app.post('/api/settings', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       await updateUserSettingsInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update settings');
     }
   });
 
-  // 11. Delete Account & Data
+  // 12. Delete Account & Data
   app.delete('/api/account', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
@@ -353,12 +663,17 @@ async function startServer() {
     }
   });
 
-  // 11b. Live Currency Exchange Rates (USD to IRR, EUR, GBP, AED, CHF)
+  // 13. Live Currency Exchange Rates (USD to IRR, EUR, GBP, AED, CHF)
   app.get('/api/exchange-rates', async (req, res) => {
     const rateProfile = String(req.query.irrProfile || 'market');
     const fallbackRates = {
       USD: 1,
-      IRR: rateProfile === 'official' ? 42000 : rateProfile === 'nima' ? 545000 : 820000,
+      IRR:
+        rateProfile === 'official'
+          ? 42000
+          : rateProfile === 'nima'
+          ? 545000
+          : 820000,
       EUR: 0.92,
       GBP: 0.79,
       AED: 3.6725,
@@ -379,7 +694,6 @@ async function startServer() {
           time_last_update_utc?: string;
         };
         const apiRates = data.rates || {};
-        // open.er-api returns official central bank IRR (~42,000); we provide both official and open-market IRR reference
         const officialIrr = Number(apiRates.IRR) || 42000;
         const resolvedIrr =
           rateProfile === 'official'
@@ -424,7 +738,7 @@ async function startServer() {
     });
   });
 
-  // 12. Context-Aware AI Olfactory Mentor (Server-Side Gemini API)
+  // 14. Context-Aware AI Olfactory Mentor (Server-Side Gemini API)
   app.post('/api/mentor/analyze', requireAuth, async (req: AuthRequest, res) => {
     const {
       userPrompt,
@@ -516,7 +830,8 @@ async function startServer() {
           trialCode: 'B — Softer drydown',
           branchVersionLabel: `${versionLabel || 'V5'}B-SofterDrydown`,
           batchSizeGrams: 10,
-          objective: 'Reduce Cashmeran (-1.5%) and increase Helvetolide (+1.5%) for airy softness without sweetness',
+          objective:
+            'Reduce Cashmeran (-1.5%) and increase Helvetolide (+1.5%) for airy softness without sweetness',
           modifications: [
             { materialName: 'Cashmeran', deltaPercent: -1.5 },
             { materialName: 'Helvetolide', deltaPercent: 1.5 },
@@ -526,7 +841,8 @@ async function startServer() {
           trialCode: 'C — More diffusion',
           branchVersionLabel: `${versionLabel || 'V5'}C-MoreDiffusion`,
           batchSizeGrams: 10,
-          objective: 'Increase Hedione (+2.0%) and reduce Iso E Super (-2.0%) to open the canopy drydown',
+          objective:
+            'Increase Hedione (+2.0%) and reduce Iso E Super (-2.0%) to open the canopy drydown',
           modifications: [
             { materialName: 'Hedione', deltaPercent: 2.0 },
             { materialName: 'Iso E Super', deltaPercent: -2.0 },

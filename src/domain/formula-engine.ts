@@ -2,6 +2,8 @@ import {
   AccordDefinition,
   FormulaLineItem,
   FormulaVersion,
+  PyramidConfidence,
+  PyramidUiCode,
   RawMaterial,
 } from './types';
 
@@ -948,5 +950,229 @@ export function scaleFormulaByUnitTarget(
     breakdown: convertFormulaTotalMassBreakdown(actualTotalGrams, densityGPerMl),
   };
 }
+
+export type PyramidRuntimeTierId =
+  | 'top'
+  | 'top-heart'
+  | 'heart'
+  | 'heart-base'
+  | 'base'
+  | 'none';
+
+export interface ResolvedMaterialPyramidMetadata {
+  uiCode: PyramidUiCode;
+  tierId: PyramidRuntimeTierId;
+  highlightTop: boolean;
+  highlightHeart: boolean;
+  highlightBase: boolean;
+  isFunctionalCarrier: boolean;
+  confidence: PyramidConfidence;
+  isUserOverride: boolean;
+  isSuggested: boolean;
+  confidenceBadgeLabel: 'User Override' | 'Suggested' | 'High Confidence';
+  basis: string;
+  displayLabel: string;
+}
+
+function mapUiCodeToHighlightsAndTier(uiCode: PyramidUiCode): {
+  tierId: PyramidRuntimeTierId;
+  highlightTop: boolean;
+  highlightHeart: boolean;
+  highlightBase: boolean;
+  displayLabel: string;
+} {
+  switch (uiCode) {
+    case 'T':
+      return {
+        tierId: 'top',
+        highlightTop: true,
+        highlightHeart: false,
+        highlightBase: false,
+        displayLabel: 'Top Note',
+      };
+    case 'TH':
+      return {
+        tierId: 'top-heart',
+        highlightTop: true,
+        highlightHeart: true,
+        highlightBase: false,
+        displayLabel: 'Top–Heart Bridge',
+      };
+    case 'H':
+      return {
+        tierId: 'heart',
+        highlightTop: false,
+        highlightHeart: true,
+        highlightBase: false,
+        displayLabel: 'Heart Note',
+      };
+    case 'HB':
+      return {
+        tierId: 'heart-base',
+        highlightTop: false,
+        highlightHeart: true,
+        highlightBase: true,
+        displayLabel: 'Heart–Base Bridge',
+      };
+    case 'TB':
+      return {
+        tierId: 'heart-base',
+        highlightTop: true,
+        highlightHeart: false,
+        highlightBase: true,
+        displayLabel: 'Top–Base Span',
+      };
+    case 'THB':
+      return {
+        tierId: 'heart-base',
+        highlightTop: true,
+        highlightHeart: true,
+        highlightBase: true,
+        displayLabel: 'Full Pyramid Span (THB)',
+      };
+    case 'B':
+      return {
+        tierId: 'base',
+        highlightTop: false,
+        highlightHeart: false,
+        highlightBase: true,
+        displayLabel: 'Base Note',
+      };
+    case 'NA':
+    case 'NONE':
+    default:
+      return {
+        tierId: 'none',
+        highlightTop: false,
+        highlightHeart: false,
+        highlightBase: false,
+        displayLabel: 'Functional Carrier / Solvent',
+      };
+  }
+}
+
+function mapTierIdToUiCode(tierId: string): PyramidUiCode | null {
+  const norm = tierId.trim().toLowerCase();
+  if (norm === 'top' || norm === 't') return 'T';
+  if (norm === 'top-heart' || norm === 'th') return 'TH';
+  if (norm === 'heart' || norm === 'h') return 'H';
+  if (norm === 'heart-base' || norm === 'hb') return 'HB';
+  if (norm === 'base' || norm === 'b') return 'B';
+  if (norm === 'thb') return 'THB';
+  if (norm === 'tb') return 'TB';
+  if (norm === 'none') return 'NONE';
+  return null;
+}
+
+function fallbackVolatilityToUiCode(volatility: string | undefined): PyramidUiCode {
+  const norm = (volatility || '').trim().toLowerCase();
+  if (norm === 'top') return 'T';
+  if (norm === 'top-heart') return 'TH';
+  if (norm === 'heart-base') return 'HB';
+  if (norm === 'base') return 'B';
+  return 'H';
+}
+
+/**
+ * Resolves the effective pyramid placement for a material using canonical v1.1 metadata
+ * (`pyramidUiCode`, `pyramidHighlightTop/Heart/Base`, `pyramidConfidence`, `pyramidBasis`)
+ * and honoring user Shelf or formula-context overrides without mutating global catalog data
+ * or relying on hard-coded material-name special cases.
+ */
+export function resolveEffectiveMaterialPyramidMetadata(
+  material: Pick<
+    RawMaterial,
+    | 'volatility'
+    | 'pyramidUiCode'
+    | 'pyramidOverrideCode'
+    | 'pyramidHighlightTop'
+    | 'pyramidHighlightHeart'
+    | 'pyramidHighlightBase'
+    | 'pyramidConfidence'
+    | 'pyramidBasis'
+  >,
+  formulaItemOverrideTier?: string | null
+): ResolvedMaterialPyramidMetadata {
+  const formulaOverrideCode = formulaItemOverrideTier
+    ? mapTierIdToUiCode(formulaItemOverrideTier)
+    : null;
+  const userShelfOverride = material.pyramidOverrideCode || null;
+  const effectiveOverride = formulaOverrideCode || userShelfOverride;
+
+  if (effectiveOverride) {
+    const mapped = mapUiCodeToHighlightsAndTier(effectiveOverride);
+    return {
+      uiCode: effectiveOverride,
+      tierId: mapped.tierId,
+      highlightTop: mapped.highlightTop,
+      highlightHeart: mapped.highlightHeart,
+      highlightBase: mapped.highlightBase,
+      isFunctionalCarrier: effectiveOverride === 'NONE',
+      confidence: 'HIGH',
+      isUserOverride: true,
+      isSuggested: false,
+      confidenceBadgeLabel: 'User Override',
+      basis: formulaOverrideCode
+        ? 'Formula-context tier override'
+        : 'User My Shelf personal override',
+      displayLabel: mapped.displayLabel,
+    };
+  }
+
+  const storedUiCode: PyramidUiCode =
+    material.pyramidUiCode || fallbackVolatilityToUiCode(material.volatility);
+  const mapped = mapUiCodeToHighlightsAndTier(storedUiCode);
+
+  const highlightTop =
+    material.pyramidHighlightTop !== undefined
+      ? Boolean(material.pyramidHighlightTop)
+      : mapped.highlightTop;
+  const highlightHeart =
+    material.pyramidHighlightHeart !== undefined
+      ? Boolean(material.pyramidHighlightHeart)
+      : mapped.highlightHeart;
+  const highlightBase =
+    material.pyramidHighlightBase !== undefined
+      ? Boolean(material.pyramidHighlightBase)
+      : mapped.highlightBase;
+
+  const confidence: PyramidConfidence = material.pyramidConfidence || 'MEDIUM';
+  const isSuggested = confidence === 'LOW' || confidence === 'MEDIUM';
+
+  return {
+    uiCode: storedUiCode,
+    tierId: mapped.tierId,
+    highlightTop,
+    highlightHeart,
+    highlightBase,
+    isFunctionalCarrier: storedUiCode === 'NONE',
+    confidence,
+    isUserOverride: false,
+    isSuggested,
+    confidenceBadgeLabel: isSuggested ? 'Suggested' : 'High Confidence',
+    basis:
+      material.pyramidBasis ||
+      'ScenTree v1.1 olfactory volatility & substantivity classification',
+    displayLabel: mapped.displayLabel,
+  };
+}
+
+export type FormulaPickerSourceMode = 'workbench' | 'shelf' | 'catalog';
+
+/**
+ * Determines the default ingredient picker source in Formula Lab:
+ * - Uses 'workbench' when the user has at least 1 material pinned to Current Workbench.
+ * - Gracefully defaults to 'shelf' when Current Workbench is empty (and 'catalog' if My Shelf is also empty).
+ */
+export function resolveFormulaPickerDefaultSource(
+  materials: Array<Pick<RawMaterial, 'isOnWorkbench' | 'isOnShelf'>>
+): FormulaPickerSourceMode {
+  const hasWorkbench = materials.some((m) => Boolean(m.isOnWorkbench));
+  if (hasWorkbench) return 'workbench';
+  const hasShelf = materials.some((m) => Boolean(m.isOnShelf));
+  if (hasShelf) return 'shelf';
+  return 'catalog';
+}
+
 
 

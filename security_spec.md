@@ -1,49 +1,50 @@
-# OsmoLab Security Specification & Red-Team Audit (`security_spec.md`)
+# OsmoLab Security Specification (`security_spec.md`)
 
-## 1. Zero-Trust Data Invariants
+## 1. Architecture & Data Flow
 
-OsmoLab enforces strict multi-layered tenant isolation across **Cloud Firestore**, **PostgreSQL (Cloud SQL)**, **Express API Middleware**, and **Browser Local State**:
+OsmoLab uses a single, explicit authentication and persistence pipeline:
 
-1. **Global Default-Deny Invariant**:
-   - Every unmapped path in Firestore (`match /{document=**} { allow read, write: if false; }`) and every unauthenticated `/api/*` mutation/workspace route is denied by default.
-2. **Strict Verified Identity & Zero Header-Spoofing Invariant**:
-   - All cloud reads and writes require a cryptographically verified Firebase Authentication session (`request.auth != null` in Firestore; `adminAuth.verifyIdToken(token, true)` in Express) with `email_verified == true`.
-   - Client-supplied identity headers (`x-workspace-uid`) or body fields (`userUid`, `ownerId`) are **never** trusted to establish identity.
-3. **Strict Owner Isolation (Zero Cross-User Access)**:
-   - User A (`uid_alice`) can **never** read (`get`), query (`list`), create, update, or delete any document or row belonging to User B (`uid_bob`).
-   - Every `allow list` rule in `firestore.rules` explicitly enforces `resource.data.ownerId == request.auth.uid` (Query Enforcer).
-   - Every PostgreSQL query in `src/db/workspace-repo.ts` scopes `WHERE user_uid = $authenticated_uid`.
-4. **Relational Integrity & Cross-Tenant Foreign Key Guard (Anti-IDOR)**:
-   - An `InventoryLot` cannot be created unless the referenced `materialId` exists AND belongs to the same authenticated `uid`.
-   - A `FormulaVersion`, `PhysicalBatch`, `ExperimentEntry`, or `SensoryEvaluation` cannot be created or updated unless the referenced `formulaId` exists AND belongs to the same authenticated `uid`.
-5. **Anti-Update-Gap & Action-Based Mutations**:
-   - Every Firestore `update` rule begins with `isValid[Entity](incoming())`, verifies immutable fields (`ownerId`, `createdAt`), enforces server timestamps (`updatedAt == request.time`), locks terminal states (`status == 'Archived'`), and restricts changed keys via `incoming().diff(existing()).affectedKeys().hasOnly(...)`.
+```text
+Firebase Authentication (Client)
+  -> Cryptographically Signed RS256 Firebase ID Token (Authorization: Bearer <jwt>)
+  -> Express API Gateway (requireAuth + verifyIdToken(token, true) + Schema Validation)
+  -> PostgreSQL Relational Persistence (Drizzle ORM, tenant-scoped by user_uid)
+```
+
+- **Firebase Authentication** is used strictly for identity verification (`src/lib/firebase.ts` on the client, `src/lib/firebase-admin.ts` and `src/middleware/auth.ts` on the server).
+- **Cloud Firestore is not used** for runtime application data. All global catalog records (`GLOBAL` scope) and user-owned records (`USER` scope: My Shelf, Current Workbench flags, Formulas, Formula Versions, Accords, Accord Versions, Evaluations, Experiments, Scent Memories) reside in **PostgreSQL** (or the explicit `PERSISTENCE_MODE=memory` store during automated testing).
 
 ---
 
-## 2. The "Dirty Dozen" Adversarial Payloads
+## 2. Core Zero-Trust Invariants
 
-| # | Attack Vector | Target Collection / Endpoint | Malicious Payload | Expected Result |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | **Identity Spoofing on Create** | `/users/uid_alice/formulas/f1` | `{ ownerId: "uid_bob", name: "Stolen Formula", ... }` | `PERMISSION_DENIED` (`ownerId != request.auth.uid`) |
-| **2** | **Unverified Email Spoof Attack** | `/users/uid_alice` | Auth token with `uid: "uid_alice"`, `email_verified: false` | `PERMISSION_DENIED` (`isVerifiedUser()` fails) |
-| **3** | **Cross-Tenant PII Read (`get`)** | `/users/uid_bob` | Authenticated as `uid_alice` (`email_verified: true`) reading `uid_bob` | `PERMISSION_DENIED` (`isOwner(userId)` fails) |
-| **4** | **Unconstrained Collection Scrape (`list`)** | `/users/uid_bob/formulas` | Authenticated as `uid_alice` listing `uid_bob`'s formulas | `PERMISSION_DENIED` (`isOwner(userId) && existing().ownerId == request.auth.uid`) |
-| **5** | **Shadow Field Injection** | `/users/uid_alice/formulas/f1` | Valid formula fields + `{ isAdmin: true, role: "superuser" }` | `PERMISSION_DENIED` (`hasOnly()` blocks undeclared keys) |
-| **6** | **Path ID Poisoning (Denial of Wallet)** | `/users/uid_alice/formulas/bad$id!@#` | Document ID containing invalid characters or > 128 chars | `PERMISSION_DENIED` (`isValidId(formulaId)` fails) |
-| **7** | **Value / Size Poisoning on Update** | `/users/uid_alice/formulas/f1` | Update `name` with a 50,000-character string or boolean `true` | `PERMISSION_DENIED` (`isValidFormulaDocument(incoming())` fails) |
-| **8** | **Immortal Field Tampering (`ownerId` / `createdAt`)** | `/users/uid_alice/formulas/f1` | Update changing `ownerId` to `"uid_bob"` or altering `createdAt` | `PERMISSION_DENIED` (`incoming().ownerId == existing().ownerId` fails) |
-| **9** | **Terminal State Unlocking Bypass** | `/users/uid_alice/formulas/f1` | Updating a formula whose existing `status` is `'Archived'` | `PERMISSION_DENIED` (`existing().status != 'Archived'` fails) |
-| **10** | **Orphaned Sub-Resource Write (No Parent)** | `/users/uid_alice/inventoryLots/lot1` | Creating a lot referencing non-existent `/materials/mat_ghost` | `PERMISSION_DENIED` (`exists(.../materials/$(incoming().materialId))` fails) |
-| **11** | **Forged Client Timestamp Injection** | `/users/uid_alice/materials/m1` | Creating or updating with backdated `updatedAt: Timestamp(2020, 1, 1)` | `PERMISSION_DENIED` (`incoming().updatedAt == request.time` fails) |
-| **12** | **Unauthenticated Header Spoof (`x-workspace-uid`)** | `GET /api/workspace` & `DELETE /api/account` | HTTP request with `x-workspace-uid: uid_victim` and no `Bearer` token | `401 Unauthorized` (Header spoofing rejected) |
+1. **Verified Identity & Token Revocation Check (`verifyIdToken(token, true)`)**:
+   - Every authenticated route under `/api/*` passes through `requireAuth` (`src/middleware/auth.ts`), which calls `adminAuth.verifyIdToken(token, true)`.
+   - Revoked tokens (`auth/id-token-revoked`) are rejected with `401 Unauthorized` (`code: "AUTH_TOKEN_REVOKED"`).
+   - Unverified email tokens (`email_verified !== true`) are rejected with `403 Forbidden` (`code: "AUTH_EMAIL_NOT_VERIFIED"`).
+   - Client-supplied headers (`x-workspace-uid`) or payload fields (`userUid`, `ownerId`, `uid`) are never trusted to establish identity; attempting to pass a mismatched tenant UID in a request body throws `403 Forbidden` (`code: "IDENTITY_SPOOFING_BLOCKED"`).
 
----
+2. **Strict Tenant Isolation & Global Catalog Immutability**:
+   - Global catalog materials (`scope = 'GLOBAL'`, `owner_uid IS NULL`) and their canonical olfactory/regulatory rows are read-only for end users.
+   - User-specific selections (`user_shelf`), custom materials (`scope = 'USER'`, `owner_uid = authenticated_uid`), formulas, formula versions, accords, accord versions, evaluations, experiments, and scent memories are strictly scoped by `WHERE user_uid = $authenticated_uid`.
 
-## 3. Red-Team Conflict Report & Verification Summary
+3. **Relational Anti-IDOR & Immutability Guards**:
+   - **Shelf & Formula Reference Guard**: Users can only add or reference materials that are either `GLOBAL` or owned by the same `authenticated_uid`. Referencing another user's private material or accord is rejected with `403`/`400`.
+   - **Immutable Formula & Accord Versions**: Saved `formula_versions` and `accord_versions` are append-only snapshots. Editing an accord creates a new `accord_versions` row (`v2`, `v3`) without mutating historical formula versions pinned to an earlier `accord_version_id`.
+   - **Transactional Account Deletion**: `DELETE /api/account` deletes all user-owned records inside a single PostgreSQL transaction and never masks database failures with a false success response.
 
-- **Shadow Update Test**: PASS — All `create` rules enforce `data.keys().hasAll(...) && data.keys().hasOnly(...)` inside `isValid[Entity]()`; all `update` rules enforce `incoming().diff(existing()).affectedKeys().hasOnly(...)` wrapped inside `isValid[Entity](incoming())`.
-- **Email Spoofing Test**: PASS — `isVerifiedUser()` enforces `request.auth != null && request.auth.token.email_verified == true`.
-- **PII Blanket Test**: PASS — `/users/{userId}` containing `email` and `displayName` restricts `get` and `write` strictly to `isOwner(userId) && existing().ownerId == request.auth.uid`.
-- **Query Trust Test**: PASS — Every `allow list` rule enforces `isOwner(userId) && existing().ownerId == request.auth.uid` without `get()`/`exists()` inside `list`.
-- **PostgreSQL IDOR & Header Bypass Audit**: PASS — Removed `x-workspace-uid` fallback in `src/middleware/auth.ts`; added parent ownership verification (`assertMaterialOwnedByUser`, `assertFormulaOwnedByUser`) in `src/db/workspace-repo.ts`.
+4. **Runtime Boundary Validation & Standardized Error Contract**:
+   - Every API mutation payload and query parameter is validated at the Express boundary (`src/api/validation.ts`) before reaching repository functions.
+   - All validation, authentication, and domain errors return a standardized JSON structure without leaking SQL queries or stack traces:
+     ```json
+     {
+       "error": "Human-readable safe message",
+       "code": "STABLE_ERROR_CODE",
+       "details": []
+     }
+     ```
+
+5. **Transport & Volumetric Hardening**:
+   - `express.json({ limit: '256kb' })` caps request payload size.
+   - Prototype pollution keys (`__proto__`, `constructor`, `prototype`) and nesting depths > 8 are rejected by `assertNoPrototypePollution`.
+   - `/api/*` responses set `Cache-Control: no-store, no-cache, must-revalidate, private`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and enforce per-IP sliding-window rate limiting (`120 req / 60s`).

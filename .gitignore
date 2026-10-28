@@ -1,8 +1,19 @@
+# Dependencies & Build Outputs
 node_modules/
 build/
 dist/
 coverage/
+server.js
+
+# OS & Logs
 .DS_Store
 *.log
+
+# Environment Variables
 .env*
 !.env.example
+
+# AI Studio & Browser Automation Temporary Artifacts
+public/assets/aistudio/
+.playwright-cli/
+.aistudio/

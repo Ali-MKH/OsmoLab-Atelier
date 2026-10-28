@@ -3635,3 +3635,332 @@ export const addEvaluationInDb = addEvaluation;
 export const upsertScentMemoryInDb = upsertScentMemory;
 export const createAccordInDb = createAccord;
 export const deleteAccountDataInDb = deleteAccountData;
+
+// ============================================================================
+// STAGE 3 BOUNDED REPOSITORY QUERIES
+// ============================================================================
+
+export interface BootstrapResponse {
+  user: WorkspacePayload['user'];
+  counts: {
+    catalog: number;
+    shelf: number;
+    workbench: number;
+    formulas: number;
+    accords: number;
+    evaluations: number;
+    experiments: number;
+    scentMemories: number;
+  };
+  activeFormulaId: number | null;
+  activeVersionLabel: string | null;
+}
+
+export async function fetchBootstrapInfo(
+  uid: string,
+  email: string
+): Promise<BootstrapResponse> {
+  const ws = await fetchFullWorkspace(uid, email);
+  const shelfCount = ws.userShelf.length;
+  const workbenchCount = ws.userShelf.filter((s) => s.isOnWorkbench).length;
+  const firstFormula = ws.formulas[0] || null;
+  return {
+    user: ws.user,
+    counts: {
+      catalog: ws.materials.length,
+      shelf: shelfCount,
+      workbench: workbenchCount,
+      formulas: ws.formulas.length,
+      accords: ws.accords.length,
+      evaluations: ws.evaluations.length,
+      experiments: ws.experiments.length,
+      scentMemories: ws.scentMemories.length,
+    },
+    activeFormulaId: firstFormula ? firstFormula.id : null,
+    activeVersionLabel: firstFormula ? firstFormula.activeVersionLabel : null,
+  };
+}
+
+export interface CatalogQueryOptions {
+  uid?: string | null;
+  email?: string;
+  search?: string;
+  family?: string;
+  origin?: string;
+  noteRole?: string;
+  pyramidCode?: string;
+  shelfOnly?: boolean;
+  workbenchOnly?: boolean;
+  includeRegulatory?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CatalogQueryResponse {
+  totalCatalogMaterials: number;
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  items: RawMaterial[];
+  materials: RawMaterial[];
+  regulatoryLimits: MaterialRegulatoryLimit[];
+  regulatoryRecords?: MaterialRegulatoryRecord[];
+  constituents?: MaterialConstituent[];
+}
+
+export async function queryCatalogMaterials(
+  options: CatalogQueryOptions = {}
+): Promise<CatalogQueryResponse> {
+  const limit = Math.min(1000, Math.max(1, options.limit ?? 1000));
+  const offset = Math.max(0, options.offset ?? 0);
+
+  let allMaterials: RawMaterial[];
+  let allLimits: MaterialRegulatoryLimit[];
+  let allRecords: MaterialRegulatoryRecord[] = [];
+  let allConstituents: MaterialConstituent[] = [];
+
+  if (options.uid) {
+    const ws = await fetchFullWorkspace(
+      options.uid,
+      options.email || `${options.uid}@perfumery.studio`
+    );
+    allMaterials = ws.materials;
+    allLimits = ws.regulatoryLimits;
+    if (options.includeRegulatory) {
+      allRecords = ws.regulatoryRecords;
+      allConstituents = ws.constituents;
+    }
+  } else {
+    const globalCatalog = loadGlobalCatalogV11();
+    allMaterials = globalCatalog.materials;
+    allLimits = globalCatalog.regulatoryLimits;
+    if (options.includeRegulatory) {
+      allRecords = globalCatalog.regulatoryRecords;
+      allConstituents = globalCatalog.constituents;
+    }
+  }
+
+  const totalCatalogMaterials = allMaterials.length;
+  const searchLower = (options.search || '').trim().toLowerCase();
+  const familyLower = (options.family || '').trim().toLowerCase();
+  const originLower = (options.origin || '').trim().toLowerCase();
+  const noteRoleLower = (options.noteRole || '').trim().toLowerCase();
+  const pyramidUpper = (options.pyramidCode || '').trim().toUpperCase();
+
+  const filtered = allMaterials.filter((m) => {
+    if (options.workbenchOnly && !m.isOnWorkbench) {
+      return false;
+    }
+    if (options.shelfOnly && !m.isOnShelf && !m.isOnWorkbench) {
+      return false;
+    }
+    if (
+      familyLower &&
+      familyLower !== 'all' &&
+      m.primaryFamily.toLowerCase() !== familyLower
+    ) {
+      return false;
+    }
+    if (
+      originLower &&
+      originLower !== 'all' &&
+      m.naturalOrSynthetic.toLowerCase() !== originLower &&
+      (m.materialKind || '').toLowerCase() !== originLower
+    ) {
+      return false;
+    }
+    if (
+      noteRoleLower &&
+      noteRoleLower !== 'all' &&
+      m.volatility.toLowerCase() !== noteRoleLower
+    ) {
+      return false;
+    }
+    if (pyramidUpper && pyramidUpper !== 'ALL') {
+      const effectiveCode = (
+        m.pyramidOverrideCode ||
+        m.pyramidUiCode ||
+        ''
+      ).toUpperCase();
+      if (effectiveCode !== pyramidUpper) {
+        return false;
+      }
+    }
+    if (searchLower) {
+      const hay = [
+        m.name,
+        m.casNumber,
+        m.inciName,
+        m.primaryFamily,
+        m.descriptiveNotes,
+        ...(m.facets || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(searchLower)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const total = filtered.length;
+  const pagedItems = filtered.slice(offset, offset + limit);
+  const pagedIds = new Set(pagedItems.map((m) => m.id));
+  const pagedLimits = allLimits.filter((l) => pagedIds.has(l.materialId));
+
+  const response: CatalogQueryResponse = {
+    totalCatalogMaterials,
+    total,
+    limit,
+    offset,
+    hasMore: offset + pagedItems.length < total,
+    items: pagedItems,
+    materials: pagedItems,
+    regulatoryLimits: pagedLimits,
+  };
+
+  if (options.includeRegulatory) {
+    response.regulatoryRecords = allRecords.filter((r) =>
+      pagedIds.has(r.materialId)
+    );
+    response.constituents = allConstituents.filter((c) =>
+      pagedIds.has(c.materialId)
+    );
+  }
+
+  return response;
+}
+
+export interface MaterialDetailResponse {
+  material: RawMaterial;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  usageReviews: MaterialUsageReview[];
+}
+
+export async function getCatalogMaterialDetail(
+  materialId: number,
+  uid?: string | null,
+  email?: string
+): Promise<MaterialDetailResponse> {
+  if (uid) {
+    const ws = await fetchFullWorkspace(uid, email || `${uid}@perfumery.studio`);
+    const mat = ws.materials.find((m) => m.id === materialId);
+    if (!mat) {
+      throw new Error(`NotFound: Material #${materialId} not found.`);
+    }
+    const limit =
+      ws.regulatoryLimits.find((r) => r.materialId === materialId) || null;
+    const reviews = ws.usageReviews.filter((u) => u.materialId === materialId);
+    return {
+      material: mat,
+      regulatoryLimit: limit,
+      usageReviews: reviews,
+    };
+  }
+
+  const globalCatalog = loadGlobalCatalogV11();
+  const mat = globalCatalog.materials.find((m) => m.id === materialId);
+  if (!mat) {
+    throw new Error(`NotFound: Material #${materialId} not found.`);
+  }
+  const limit =
+    globalCatalog.regulatoryLimits.find((r) => r.materialId === materialId) ||
+    null;
+  return {
+    material: mat,
+    regulatoryLimit: limit,
+    usageReviews: [],
+  };
+}
+
+export interface MaterialRegulatoryDossierResponse {
+  materialId: number;
+  materialName: string;
+  casNumber: string;
+  verificationStatus: RegulatoryVerificationStatus;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  regulatoryRecords: MaterialRegulatoryRecord[];
+  constituents: MaterialConstituent[];
+}
+
+export async function getCatalogMaterialRegulatoryDossier(
+  materialId: number,
+  uid?: string | null,
+  email?: string
+): Promise<MaterialRegulatoryDossierResponse> {
+  if (uid) {
+    const ws = await fetchFullWorkspace(uid, email || `${uid}@perfumery.studio`);
+    const mat = ws.materials.find((m) => m.id === materialId);
+    if (!mat) {
+      throw new Error(`NotFound: Material #${materialId} not found.`);
+    }
+    const limit =
+      ws.regulatoryLimits.find((r) => r.materialId === materialId) || null;
+    const records = ws.regulatoryRecords.filter(
+      (r) => r.materialId === materialId
+    );
+    const constituents = ws.constituents.filter(
+      (c) => c.materialId === materialId
+    );
+    const verificationStatus: RegulatoryVerificationStatus =
+      limit?.verificationStatus ||
+      records[0]?.verificationStatus ||
+      'LOOKUP_REQUIRED';
+    return {
+      materialId: mat.id,
+      materialName: mat.name,
+      casNumber: mat.casNumber,
+      verificationStatus,
+      regulatoryLimit: limit,
+      regulatoryRecords: records,
+      constituents,
+    };
+  }
+
+  const globalCatalog = loadGlobalCatalogV11();
+  const mat = globalCatalog.materials.find((m) => m.id === materialId);
+  if (!mat) {
+    throw new Error(`NotFound: Material #${materialId} not found.`);
+  }
+  const limit =
+    globalCatalog.regulatoryLimits.find((r) => r.materialId === materialId) ||
+    null;
+  const records = globalCatalog.regulatoryRecords.filter(
+    (r) => r.materialId === materialId
+  );
+  const constituents = globalCatalog.constituents.filter(
+    (c) => c.materialId === materialId
+  );
+  const verificationStatus: RegulatoryVerificationStatus =
+    limit?.verificationStatus ||
+    records[0]?.verificationStatus ||
+    'LOOKUP_REQUIRED';
+  return {
+    materialId: mat.id,
+    materialName: mat.name,
+    casNumber: mat.casNumber,
+    verificationStatus,
+    regulatoryLimit: limit,
+    regulatoryRecords: records,
+    constituents,
+  };
+}
+
+export async function toggleUserWorkbenchPin(
+  uid: string,
+  materialId: number,
+  isOnWorkbench?: boolean
+): Promise<UserShelfItem> {
+  const shelf = await getUserShelf(uid);
+  const existing = shelf.find((s) => s.materialId === materialId);
+  if (!existing) {
+    return addToUserShelf(uid, materialId, {
+      isOnWorkbench: isOnWorkbench ?? true,
+    });
+  }
+  const nextPin = isOnWorkbench !== undefined ? isOnWorkbench : !existing.isOnWorkbench;
+  return updateUserShelfItem(uid, materialId, { isOnWorkbench: nextPin });
+}
+

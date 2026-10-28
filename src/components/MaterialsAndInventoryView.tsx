@@ -14,6 +14,11 @@ import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
 import { normalizeMaterialSynonyms } from '../domain/navigation-state';
 import { PyramidStepIcon, getVolatilityBadgeConfig } from './PyramidStepIcon';
 import { DualRegulatorySlider } from './DualRegulatorySlider';
+import { resolveEffectiveMaterialPyramidMetadata } from '../domain/formula-engine';
+import { ShelfFilterBar } from '../features/catalog/ShelfControls';
+import { MaterialFilters } from '../features/catalog/MaterialFilters';
+import { PyramidBadge } from '../features/catalog/PyramidBadge';
+import { RegulatoryDossier } from '../features/regulatory/RegulatoryDossier';
 import {
   Plus,
   Search,
@@ -135,6 +140,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const [searchQuery, setSearchQuery] = useState('');
   const [familyFilter, setFamilyFilter] = useState('All');
   const [originFilter, setOriginFilter] = useState('All');
+  const [pyramidFilter, setPyramidFilter] = useState('All');
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
   const [showAddAccordModal, setShowAddAccordModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -195,6 +201,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
         supplierName: string;
         supplierProductName: string;
         workingDilutionPct: string;
+        pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
       }
     >
   >({});
@@ -2608,6 +2615,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     const matchOrig =
       originFilter === 'All' ||
       m.naturalOrSynthetic.toLowerCase() === originFilter.toLowerCase();
+    const pyramidMeta = resolveEffectiveMaterialPyramidMetadata(m);
+    const matchPyramid =
+      pyramidFilter === 'All' || pyramidMeta.uiCode === pyramidFilter;
     const q = searchQuery.toLowerCase().trim();
     const synonyms = normalizeMaterialSynonyms(m.alsoCalled, m.aliases);
     const matchQ =
@@ -2619,7 +2629,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       m.casNumber.toLowerCase().includes(q) ||
       m.primaryFamily.toLowerCase().includes(q) ||
       m.facets.some((f) => f.toLowerCase().includes(q));
-    return matchFam && matchOrig && matchQ;
+    return matchFam && matchOrig && matchPyramid && matchQ;
   });
 
   const workbenchCount = materials.filter((m) => isMaterialOnWorkbench(m)).length;
@@ -2668,106 +2678,32 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Searchable Raw Material Organ List */}
         <div className="lg:col-span-5 rounded-lg bg-[#111621] border border-slate-800 p-4 space-y-3.5 min-w-0 overflow-hidden">
-          {/* Segmented Palette Switch: My Workbench vs My Shelf vs Catalog */}
-          <div className="flex items-center gap-1 p-1 bg-[#0B0E14] border border-slate-800 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setPaletteViewTab('workbench')}
-              data-testid="palette-tab-workbench"
-              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
-                paletteViewTab === 'workbench'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="truncate">My Workbench</span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
-                  paletteViewTab === 'workbench' ? 'bg-white/25 text-white' : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {workbenchCount}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaletteViewTab('shelf')}
-              data-testid="palette-tab-shelf"
-              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
-                paletteViewTab === 'shelf'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="truncate">My Shelf</span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
-                  paletteViewTab === 'shelf' ? 'bg-white/25 text-white' : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {shelfCount}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaletteViewTab('catalog')}
-              data-testid="palette-tab-catalog"
-              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
-                paletteViewTab === 'catalog'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="truncate">Catalog</span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
-                  paletteViewTab === 'catalog' ? 'bg-white/25 text-white' : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {materials.length}
-              </span>
-            </button>
-          </div>
+          {/* Segmented Palette Switch: Catalog | My Shelf (+ Workbench filter chip) */}
+          <ShelfFilterBar
+            activeTab={paletteViewTab}
+            workbenchOnlyInShelf={paletteViewTab === 'workbench'}
+            catalogCount={materials.length}
+            shelfCount={shelfCount}
+            workbenchCount={workbenchCount}
+            onSelectTab={(nextTab) => {
+              setPaletteViewTab(nextTab);
+            }}
+            onToggleWorkbenchOnlyInShelf={(nextWorkbenchOnly) => {
+              setPaletteViewTab(nextWorkbenchOnly ? 'workbench' : 'shelf');
+            }}
+          />
 
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search name, scientific, CAS, facet..."
-              aria-label="Search raw materials"
-              className="w-full bg-[#0B0E14] border border-slate-800 rounded-md pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 placeholder:text-slate-500"
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs">
-            <select
-              aria-label="Filter by Olfactory Family"
-              value={familyFilter}
-              onChange={(e) => setFamilyFilter(e.target.value)}
-              className="flex-1 min-w-0 bg-[#0B0E14] border border-slate-800 rounded px-2 py-1 text-slate-300"
-            >
-              <option value="All">All Families</option>
-              {OLFACTORY_WHEEL_FAMILIES.map((f) => (
-                <option key={f.id} value={f.name}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Filter by Natural or Synthetic"
-              value={originFilter}
-              onChange={(e) => setOriginFilter(e.target.value)}
-              className="min-w-0 bg-[#0B0E14] border border-slate-800 rounded px-2 py-1 text-slate-300"
-            >
-              <option value="All">All Origins</option>
-              <option value="Natural">Natural</option>
-              <option value="Synthetic">Synthetic</option>
-            </select>
-          </div>
+          {/* Search & Multi-Facet Filters */}
+          <MaterialFilters
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            familyFilter={familyFilter}
+            onFamilyChange={setFamilyFilter}
+            originFilter={originFilter}
+            onOriginChange={setOriginFilter}
+            pyramidFilter={pyramidFilter}
+            onPyramidChange={setPyramidFilter}
+          />
 
           {/* Compact Materials List */}
           <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
@@ -2914,7 +2850,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         title={`Application step in perfume pyramid: ${mat.volatility}`}
                         className="p-1 rounded bg-[#111621] border border-slate-800 shrink-0"
                       >
-                        <PyramidStepIcon volatility={mat.volatility} size="sm" />
+                        <PyramidStepIcon
+                          volatility={mat.volatility}
+                          material={mat}
+                          size="sm"
+                        />
                       </div>
                     </div>
                   </div>
@@ -2950,10 +2890,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     <h2 className="text-xl sm:text-2xl font-sans font-semibold text-white break-words">
                       {selectedMaterial.name}
                     </h2>
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-mono-tabular text-xs shrink-0">
-                      <PyramidStepIcon volatility={selectedMaterial.volatility} size="xs" />
-                      <span>{selectedMaterial.volatility} Note</span>
-                    </div>
+                    <PyramidBadge material={selectedMaterial} size="sm" />
                   </div>
                   <p className="text-xs text-slate-400 mt-1 break-words">
                     Aliases: {normalizeMaterialSynonyms(selectedMaterial.alsoCalled, selectedMaterial.aliases).join(', ') || 'None'} · INCI: {selectedMaterial.inciName}
@@ -3125,7 +3062,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-[11px] text-slate-400 mb-1">
                         Supplier Name
@@ -3150,6 +3087,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                               workingDilutionPct:
                                 prev[selectedMaterial.id]?.workingDilutionPct ??
                                 String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100),
+                              pyramidOverrideCode:
+                                prev[selectedMaterial.id]?.pyramidOverrideCode !== undefined
+                                  ? prev[selectedMaterial.id]?.pyramidOverrideCode
+                                  : selectedMaterial.pyramidOverrideCode,
                             },
                           }))
                         }
@@ -3181,6 +3122,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                               workingDilutionPct:
                                 prev[selectedMaterial.id]?.workingDilutionPct ??
                                 String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100),
+                              pyramidOverrideCode:
+                                prev[selectedMaterial.id]?.pyramidOverrideCode !== undefined
+                                  ? prev[selectedMaterial.id]?.pyramidOverrideCode
+                                  : selectedMaterial.pyramidOverrideCode,
                             },
                           }))
                         }
@@ -3215,11 +3160,59 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                                 selectedMaterial.supplierProductName ??
                                 '',
                               workingDilutionPct: e.target.value,
+                              pyramidOverrideCode:
+                                prev[selectedMaterial.id]?.pyramidOverrideCode !== undefined
+                                  ? prev[selectedMaterial.id]?.pyramidOverrideCode
+                                  : selectedMaterial.pyramidOverrideCode,
                             },
                           }))
                         }
                         className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono-tabular text-white focus:outline-none focus:border-emerald-500"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        Pyramid Tier Override
+                      </label>
+                      <select
+                        aria-label="Shelf Pyramid Tier Override"
+                        value={
+                          (shelfMetaDraft[selectedMaterial.id]?.pyramidOverrideCode !== undefined
+                            ? shelfMetaDraft[selectedMaterial.id]?.pyramidOverrideCode
+                            : selectedMaterial.pyramidOverrideCode) || ''
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const code = raw ? (raw as RawMaterial['pyramidOverrideCode']) : null;
+                          setShelfMetaDraft((prev) => ({
+                            ...prev,
+                            [selectedMaterial.id]: {
+                              supplierName:
+                                prev[selectedMaterial.id]?.supplierName ??
+                                selectedMaterial.supplier ??
+                                '',
+                              supplierProductName:
+                                prev[selectedMaterial.id]?.supplierProductName ??
+                                selectedMaterial.supplierProductName ??
+                                '',
+                              workingDilutionPct:
+                                prev[selectedMaterial.id]?.workingDilutionPct ??
+                                String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100),
+                              pyramidOverrideCode: code,
+                            },
+                          }));
+                        }}
+                        className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="">Catalog Default ({selectedMaterial.pyramidUiCode || selectedMaterial.volatility})</option>
+                        <option value="T">T — Top Note</option>
+                        <option value="TH">TH — Top-Heart Bridge</option>
+                        <option value="H">H — Heart Note</option>
+                        <option value="HB">HB — Heart-Base Bridge</option>
+                        <option value="B">B — Base Note</option>
+                        <option value="THB">THB — Full Span (Top-Heart-Base)</option>
+                        <option value="NONE">NONE — Functional Carrier / Solvent</option>
+                      </select>
                     </div>
                   </div>
 
@@ -3264,6 +3257,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                             ? Number(draft.workingDilutionPct)
                             : selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100,
                           personalNotes: notes,
+                          pyramidOverrideCode:
+                            draft?.pyramidOverrideCode !== undefined
+                              ? draft.pyramidOverrideCode
+                              : selectedMaterial.pyramidOverrideCode ?? null,
                         };
                         if (isMaterialOnShelf(selectedMaterial)) {
                           if (onUpdateShelfItem) {
@@ -3513,6 +3510,12 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   )}
                 </div>
+
+                {/* On-demand Canonical Regulatory Dossier (/api/catalog/:materialId/regulatory) */}
+                <RegulatoryDossier
+                  materialId={selectedMaterial.id}
+                  materialName={selectedMaterial.name}
+                />
               </div>
             )}
 
@@ -3766,3 +3769,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     </div>
   );
 };
+
+export const MaterialCatalogView = MaterialsAndInventoryView;
+export type MaterialCatalogViewProps = MaterialsAndInventoryViewProps;
+

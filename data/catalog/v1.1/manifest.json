@@ -1,0 +1,43 @@
+{
+  "manifestVersion": "1.1.0",
+  "catalogVersion": "1.1",
+  "generatedAt": "2026-10-28T00:00:00Z",
+  "sourceAttribution": {
+    "primaryTaxonomyAndOlfactoryReference": "ScenTree — The Collaborative Perfumery Raw Materials Classification",
+    "license": "CC BY-NC 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+    "regulatorySources": [
+      "IFRA 51st Amendment Standards Library (June 2023)",
+      "Regulation (EC) No 1223/2009 Annex III & Commission Regulation (EU) 2023/1545 (56 Extended Fragrance Allergens)"
+    ]
+  },
+  "files": {
+    "materials.csv": {
+      "path": "data/catalog/v1.1/materials.csv",
+      "rowCount": 815,
+      "bytes": 982061,
+      "sha256": "3c0817200e00d668dca5d27d6a39d245be055aaa8320025084265c4eeaf89488",
+      "description": "Canonical 815-material perfumery dictionary with v1.1 pyramid metadata (pyramid_ui_code, pyramid_highlight_top/heart/base, pyramid_confidence, pyramid_basis)"
+    },
+    "regulatory.csv": {
+      "path": "data/catalog/v1.1/regulatory.csv",
+      "rowCount": 34,
+      "bytes": 30633,
+      "sha256": "1013e75eb32508412ac0eff11355378ca5edaaf06638a66f96605b480845c15f",
+      "description": "Structured IFRA 51st Amendment category limits and EU Cosmetics Regulation (EC 1223/2009 / 2023/1545) records"
+    },
+    "starter-sets.csv": {
+      "path": "data/catalog/v1.1/starter-sets.csv",
+      "rowCount": 66,
+      "bytes": 11381,
+      "sha256": "30be9321cd519a91b49bad790e69e6469a89d7254031f904e19444a44ae1a45f",
+      "description": "Curated starter organ sets (Beginner 20, Accord Builder 40, Classic Atelier 80)"
+    },
+    "schema.json": {
+      "path": "data/catalog/v1.1/schema.json",
+      "bytes": 3247,
+      "sha256": "11cad7b73807d1425fef1847dc7cbd0b802ea2f5846944adb8965c27fe4c3c32",
+      "description": "JSON Schema contract for canonical v1.1 catalog CSV columns and enums"
+    }
+  }
+}
