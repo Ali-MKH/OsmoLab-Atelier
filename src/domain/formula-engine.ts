@@ -228,8 +228,38 @@ export function detectAccordCircularReference(
 }
 
 /**
+ * Resolves the immutable AccordItem[] snapshot for a formula line item referencing an Accord.
+ * When `accordVersionId` or `accordVersionLabel` is pinned on the line item, resolves that
+ * specific version from `accord.versions` so subsequent edits to the Accord do not silently
+ * alter historical formula versions.
+ */
+export function resolveAccordItemsForLineItem(
+  item: Pick<FormulaLineItem, 'accordVersionId' | 'accordVersionLabel'>,
+  accord: AccordDefinition
+) {
+  if (accord.versions && accord.versions.length > 0) {
+    if (item.accordVersionId !== undefined && item.accordVersionId !== null) {
+      const byId = accord.versions.find(
+        (v) =>
+          v.id === item.accordVersionId ||
+          v.versionId === String(item.accordVersionId) ||
+          v.versionId === `acc-${accord.id}-v${item.accordVersionId}`
+      );
+      if (byId) return byId.items;
+    }
+    if (item.accordVersionLabel) {
+      const byLabel = accord.versions.find(
+        (v) => v.versionLabel.toLowerCase() === item.accordVersionLabel!.toLowerCase()
+      );
+      if (byLabel) return byLabel.items;
+    }
+  }
+  return accord.items;
+}
+
+/**
  * Expands any nested accords inside a formula into their constituent raw materials,
- * combining identical materials while preserving dilution awareness.
+ * combining identical materials while preserving dilution awareness and pinned accord version snapshots.
  */
 export function expandNestedAccords(
   items: FormulaLineItem[],
@@ -241,11 +271,24 @@ export function expandNestedAccords(
   const expanded: FormulaLineItem[] = [];
 
   for (const item of items) {
-    if (item.type === 'accord' && item.accordId && accordMap.has(item.accordId)) {
-      const accord = accordMap.get(item.accordId)!;
-      const accordTotalPct = accord.items.reduce((s, i) => s + i.percentage, 0) || 100;
+    const accordById = item.accordId ? accordMap.get(item.accordId) : undefined;
+    const accordByVersionId =
+      !accordById && item.accordVersionId
+        ? accords.find((a) =>
+            a.versions?.some(
+              (v) =>
+                v.id === item.accordVersionId ||
+                v.versionId === String(item.accordVersionId)
+            )
+          )
+        : undefined;
+    const accord = accordById || accordByVersionId;
 
-      for (const sub of accord.items) {
+    if ((item.type === 'accord' || item.itemType === 'ACCORD') && accord) {
+      const accordItems = resolveAccordItemsForLineItem(item, accord);
+      const accordTotalPct = accordItems.reduce((s, i) => s + i.percentage, 0) || 100;
+
+      for (const sub of accordItems) {
         const subRatio = sub.percentage / accordTotalPct;
         const subGrams = roundDecimal(item.quantityGrams * subRatio, 3);
         const subPct = roundDecimal(item.percentage * subRatio, 3);
@@ -256,7 +299,10 @@ export function expandNestedAccords(
         expanded.push({
           id: `${item.id}-accord-${accord.id}-mat-${sub.materialId}`,
           type: 'material',
+          itemType: 'MATERIAL',
           materialId: sub.materialId,
+          accordId: accord.id,
+          accordVersionId: item.accordVersionId ?? null,
           name: `${sub.materialName} (via ${accord.name})`,
           quantityGrams: subGrams,
           percentage: subPct,

@@ -50,6 +50,31 @@ interface MaterialsAndInventoryViewProps {
   usageReviews: MaterialUsageReview[];
   onToggleWorkbenchMaterial?: (id: number) => void;
   onUpdateMaterialNotes?: (id: number, notes: string) => void;
+  onAddToShelf?: (
+    materialId: number,
+    payload?: {
+      supplierName?: string | null;
+      supplierProductName?: string | null;
+      workingDilutionPct?: number | null;
+      personalNotes?: string | null;
+      isOnWorkbench?: boolean;
+      pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
+      favorite?: boolean;
+    }
+  ) => void;
+  onUpdateShelfItem?: (
+    materialId: number,
+    payload: {
+      supplierName?: string | null;
+      supplierProductName?: string | null;
+      workingDilutionPct?: number | null;
+      personalNotes?: string | null;
+      isOnWorkbench?: boolean;
+      pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
+      favorite?: boolean;
+    }
+  ) => void;
+  onRemoveFromShelf?: (materialId: number) => void;
   accords: AccordDefinition[];
   formulas: Formula[];
   educationalPromptsEnabled: boolean;
@@ -103,6 +128,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   onOpenFormula,
   onToggleWorkbenchMaterial,
   onUpdateMaterialNotes,
+  onAddToShelf,
+  onUpdateShelfItem,
+  onRemoveFromShelf,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [familyFilter, setFamilyFilter] = useState('All');
@@ -133,11 +161,14 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     }
   };
 
-  // Palette View Mode: 'workbench' (User's workbench ingredients) vs 'catalog' (All library materials)
-  const [paletteViewTab, setPaletteViewTabState] = useState<'workbench' | 'catalog'>(() => {
+  // Palette View Mode: 'workbench' (Active bench subset) | 'shelf' (All user-owned materials) | 'catalog' (All 815+ library materials)
+  const [paletteViewTab, setPaletteViewTabState] = useState<
+    'workbench' | 'shelf' | 'catalog'
+  >(() => {
     try {
       const saved = sessionStorage.getItem('osmolab_palette_tab');
-      if (saved === 'workbench' || saved === 'shelf') return 'workbench';
+      if (saved === 'workbench') return 'workbench';
+      if (saved === 'shelf') return 'shelf';
       if (saved === 'catalog') return 'catalog';
     } catch {
       // ignore
@@ -145,7 +176,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     return 'catalog';
   });
 
-  const setPaletteViewTab = (tab: 'workbench' | 'catalog') => {
+  const setPaletteViewTab = (tab: 'workbench' | 'shelf' | 'catalog') => {
     setPaletteViewTabState(tab);
     try {
       sessionStorage.setItem('osmolab_palette_tab', tab);
@@ -154,30 +185,90 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     }
   };
 
-  const [workbenchMaterialIds, setWorkbenchMaterialIds] = useState<Set<number>>(() => {
-    return new Set(materials.filter((m) => m.isOnWorkbench !== false).map((m) => m.id));
-  });
   const [profileDetailMaterial, setProfileDetailMaterial] = useState<RawMaterial | null>(null);
   const [modalProfileTab, setModalProfileTab] = useState<'overview' | 'regulatory'>('overview');
   const [personalNotesDraft, setPersonalNotesDraft] = useState<Record<number, string>>({});
+  const [shelfMetaDraft, setShelfMetaDraft] = useState<
+    Record<
+      number,
+      {
+        supplierName: string;
+        supplierProductName: string;
+        workingDilutionPct: string;
+      }
+    >
+  >({});
+
+  const triggerToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2200);
+  };
+
+  const isMaterialOnShelf = (mat: RawMaterial): boolean => {
+    if (mat.isOnShelf !== undefined) return Boolean(mat.isOnShelf);
+    return mat.isOnWorkbench !== false;
+  };
+
+  const isMaterialOnWorkbench = (mat: RawMaterial): boolean => {
+    return isMaterialOnShelf(mat) && Boolean(mat.isOnWorkbench);
+  };
+
+  const handleToggleShelf = (matOrId: RawMaterial | number) => {
+    const mat =
+      typeof matOrId === 'number'
+        ? materials.find((m) => m.id === matOrId)
+        : matOrId;
+    if (!mat) return;
+    const currentlyOnShelf = isMaterialOnShelf(mat);
+    if (currentlyOnShelf) {
+      onRemoveFromShelf?.(mat.id);
+      triggerToast(`Removed ${mat.name} from My Shelf (and cleared Workbench pin)`);
+    } else {
+      onAddToShelf?.(mat.id, {
+        supplierName: mat.supplier || '',
+        supplierProductName: mat.supplierProductName || '',
+        workingDilutionPct: mat.workingDilutionPct ?? mat.recommendedDilution ?? 100,
+        personalNotes: mat.personalNotes || '',
+        isOnWorkbench: false,
+      });
+      triggerToast(`Added ${mat.name} to My Shelf`);
+    }
+  };
 
   const handleToggleWorkbench = (matId: number) => {
-    setWorkbenchMaterialIds((prev) => {
-      const next = new Set(prev);
-      const isAlreadyOnWorkbench = next.has(matId);
-      if (isAlreadyOnWorkbench) {
-        next.delete(matId);
-        setToastMsg(`Removed material from My Workbench`);
-      } else {
-        next.add(matId);
-        setToastMsg(`Added material to My Workbench`);
+    const targetMat = materials.find((m) => m.id === matId);
+    if (!targetMat) return;
+    const onShelf = isMaterialOnShelf(targetMat);
+    const onWorkbench = isMaterialOnWorkbench(targetMat);
+
+    if (!onShelf) {
+      // Pinning to Workbench requires the material to be on My Shelf first
+      onAddToShelf?.(matId, {
+        supplierName: targetMat.supplier || '',
+        supplierProductName: targetMat.supplierProductName || '',
+        workingDilutionPct:
+          targetMat.workingDilutionPct ?? targetMat.recommendedDilution ?? 100,
+        personalNotes: targetMat.personalNotes || '',
+        isOnWorkbench: true,
+      });
+      setToastMsg(`Added ${targetMat.name} to My Shelf and pinned to Current Workbench`);
+    } else if (onWorkbench) {
+      // Removing from Workbench keeps the material on My Shelf
+      if (onUpdateShelfItem) {
+        onUpdateShelfItem(matId, { isOnWorkbench: false });
+      } else if (onToggleWorkbenchMaterial) {
+        onToggleWorkbenchMaterial(matId);
       }
-      setTimeout(() => setToastMsg(null), 2200);
-      return next;
-    });
-    if (onToggleWorkbenchMaterial) {
-      onToggleWorkbenchMaterial(matId);
+      setToastMsg(`Unpinned ${targetMat.name} from Current Workbench (kept on My Shelf)`);
+    } else {
+      if (onUpdateShelfItem) {
+        onUpdateShelfItem(matId, { isOnWorkbench: true });
+      } else if (onToggleWorkbenchMaterial) {
+        onToggleWorkbenchMaterial(matId);
+      }
+      setToastMsg(`Pinned ${targetMat.name} to Current Workbench`);
     }
+    setTimeout(() => setToastMsg(null), 2200);
   };
 
   useEffect(() => {
@@ -519,7 +610,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const renderMaterialProfileModal = () => {
     if (!profileDetailMaterial) return null;
     const mat = profileDetailMaterial;
-    const isOnWorkbench = workbenchMaterialIds.has(mat.id);
+    const isOnShelf = isMaterialOnShelf(mat);
+    const isOnWorkbench = isMaterialOnWorkbench(mat);
     const regLimit = regulatoryLimits.find((r) => r.materialId === mat.id);
     const badgeConfig = getVolatilityBadgeConfig(mat.volatility);
     const facetDotColor = getFacetColor(mat.primaryFamily);
@@ -552,7 +644,28 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
               <span>Material profile</span>
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleToggleShelf(mat.id)}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  isOnShelf
+                    ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-rose-950/40 hover:border-rose-500/40 hover:text-rose-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
+              >
+                {isOnShelf ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>On My Shelf</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add to My Shelf</span>
+                  </>
+                )}
+              </button>
               <button
                 type="button"
                 onClick={() => handleToggleWorkbench(mat.id)}
@@ -570,7 +683,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 ) : (
                   <>
                     <Plus className="w-3.5 h-3.5" />
-                    <span>+ Add to My Workbench</span>
+                    <span>+ Pin to Workbench</span>
                   </>
                 )}
               </button>
@@ -770,12 +883,24 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 </span>
                 <DualRegulatorySlider
                   materialName={mat.name}
-                  currentPercent={regLimit?.maxAllowedPercent ? regLimit.maxAllowedPercent * 0.4 : 0.05}
+                  currentPercent={null}
                   ifraLimitPercent={regLimit?.maxAllowedPercent ?? null}
                   euLimitPercent={regLimit?.euCosmeticLimitPercent ?? mat.euCosmeticLimitPercent ?? null}
                   ifraCategory="Cat 4 (Fine Fragrance)"
                   euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
                   isEuAllergen={Boolean(regLimit?.euAllergenDeclarable || mat.euAllergenDeclarable)}
+                  leaveOnThresholdPct={regLimit?.euLabelThresholdLeaveOnPct ?? 0.001}
+                  rinseOffThresholdPct={regLimit?.euLabelThresholdRinseOffPct ?? 0.01}
+                  verificationStatus={
+                    regLimit?.verificationStatus ||
+                    (regLimit?.maxAllowedPercent === null || regLimit?.maxAllowedPercent === undefined
+                      ? 'LOOKUP_REQUIRED'
+                      : regLimit?.isDemoData
+                      ? 'DEMO'
+                      : 'PARTIALLY_VERIFIED')
+                  }
+                  sourceDocument={regLimit?.sourceDocument}
+                  sourceUrl={regLimit?.regulatorySources}
                 />
               </div>
             )}
@@ -2467,10 +2592,14 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     return '#10B981';
   };
 
-  // 2. RAW MATERIALS PALETTE: MY WORKBENCH VS CATALOG LIBRARY
+  // 2. RAW MATERIALS PALETTE: MY WORKBENCH vs MY SHELF vs CATALOG LIBRARY
   const filteredMaterials = materials.filter((m) => {
-    const isOnWorkbench = workbenchMaterialIds.has(m.id);
+    const isOnShelf = isMaterialOnShelf(m);
+    const isOnWorkbench = isMaterialOnWorkbench(m);
     if (paletteViewTab === 'workbench' && !isOnWorkbench) {
+      return false;
+    }
+    if (paletteViewTab === 'shelf' && !isOnShelf) {
       return false;
     }
     const matchFam =
@@ -2493,7 +2622,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     return matchFam && matchOrig && matchQ;
   });
 
-  const workbenchCount = materials.filter((m) => workbenchMaterialIds.has(m.id)).length;
+  const workbenchCount = materials.filter((m) => isMaterialOnWorkbench(m)).length;
+  const shelfCount = materials.filter((m) => isMaterialOnShelf(m)).length;
 
   return (
     <div className="space-y-6">
@@ -2510,7 +2640,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             Perfumery Materials Organ &amp; Bench
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Browse the master ingredient catalog, manage your personal workbench, and inspect volatility tiers and IFRA limits.
+            Browse the master ingredient catalog, manage your personal shelf &amp; workbench, and inspect volatility tiers and IFRA limits.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
@@ -2538,13 +2668,13 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Searchable Raw Material Organ List */}
         <div className="lg:col-span-5 rounded-lg bg-[#111621] border border-slate-800 p-4 space-y-3.5 min-w-0 overflow-hidden">
-          {/* Segmented Palette Switch: My Workbench vs Catalog */}
-          <div className="flex items-center gap-1.5 p-1 bg-[#0B0E14] border border-slate-800 rounded-lg">
+          {/* Segmented Palette Switch: My Workbench vs My Shelf vs Catalog */}
+          <div className="flex items-center gap-1 p-1 bg-[#0B0E14] border border-slate-800 rounded-lg">
             <button
               type="button"
               onClick={() => setPaletteViewTab('workbench')}
               data-testid="palette-tab-workbench"
-              className={`flex-1 py-1.5 px-2.5 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1.5 min-w-0 ${
+              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
                 paletteViewTab === 'workbench'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -2561,9 +2691,28 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             </button>
             <button
               type="button"
+              onClick={() => setPaletteViewTab('shelf')}
+              data-testid="palette-tab-shelf"
+              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
+                paletteViewTab === 'shelf'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span className="truncate">My Shelf</span>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
+                  paletteViewTab === 'shelf' ? 'bg-white/25 text-white' : 'bg-slate-800 text-slate-300'
+                }`}
+              >
+                {shelfCount}
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => setPaletteViewTab('catalog')}
               data-testid="palette-tab-catalog"
-              className={`flex-1 py-1.5 px-2.5 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1.5 min-w-0 ${
+              className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 min-w-0 ${
                 paletteViewTab === 'catalog'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -2624,11 +2773,15 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
           <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
             {filteredMaterials.length === 0 ? (
               <div className="p-8 text-center bg-[#0B0E14] border border-slate-800 rounded-lg text-slate-400 text-xs">
-                {paletteViewTab === 'workbench' ? (
+                {paletteViewTab === 'workbench' || paletteViewTab === 'shelf' ? (
                   <div className="space-y-2">
-                    <p className="text-slate-300 font-medium">My Workbench is currently empty.</p>
+                    <p className="text-slate-300 font-medium">
+                      {paletteViewTab === 'workbench'
+                        ? 'My Workbench is currently empty.'
+                        : 'My Shelf is currently empty.'}
+                    </p>
                     <p className="text-[11px] text-slate-500">
-                      Switch to &quot;Catalog&quot; to browse the master dictionary of materials and click &quot;+ My Workbench&quot;.
+                      Switch to &quot;Catalog&quot; to browse the 815-material dictionary and add materials to your Shelf or Workbench.
                     </p>
                     <button
                       type="button"
@@ -2645,7 +2798,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             ) : (
               filteredMaterials.map((mat) => {
                 const isSelected = mat.id === selectedMaterial?.id;
-                const isOnWorkbench = workbenchMaterialIds.has(mat.id);
+                const isOnShelf = isMaterialOnShelf(mat);
+                const isOnWorkbench = isMaterialOnWorkbench(mat);
                 const facetDotColor = getFacetColor(mat.primaryFamily);
 
                 return (
@@ -2691,6 +2845,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                             <span className="px-1.5 py-0.2 rounded bg-emerald-950/60 border border-emerald-600/50 text-emerald-300 text-[10px] font-medium shrink-0">
                               My Workbench
                             </span>
+                          ) : isOnShelf ? (
+                            <span className="px-1.5 py-0.2 rounded bg-cyan-950/60 border border-cyan-600/50 text-cyan-300 text-[10px] font-medium shrink-0">
+                              My Shelf
+                            </span>
                           ) : (
                             <span className="px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-medium shrink-0">
                               Catalog Only
@@ -2705,15 +2863,33 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                       </div>
                     </div>
 
-                    {/* Right side: Add/Remove My Workbench button + Pyramid step visual icon */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Right side: Shelf + Workbench buttons + Pyramid step visual icon */}
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
+                        data-testid={`toggle-shelf-${mat.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleShelf(mat.id);
+                        }}
+                        title={isOnShelf ? 'Remove from My Shelf' : 'Add to My Shelf'}
+                        className={`px-1.5 py-1 rounded border text-[10px] transition-colors flex items-center gap-1 ${
+                          isOnShelf
+                            ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-rose-950/50 hover:border-rose-500/50 hover:text-rose-300'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-cyan-600 hover:text-white hover:border-cyan-500'
+                        }`}
+                      >
+                        {isOnShelf ? 'Shelf ✓' : '+ Shelf'}
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid={`toggle-workbench-${mat.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleToggleWorkbench(mat.id);
                         }}
-                        title={isOnWorkbench ? 'Remove from My Workbench' : 'Add to My Workbench'}
+                        title={isOnWorkbench ? 'Unpin from My Workbench' : 'Pin to My Workbench'}
                         className={`p-1.5 rounded-md border text-xs transition-colors flex items-center gap-1 ${
                           isOnWorkbench
                             ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 hover:bg-rose-950/50 hover:border-rose-500/50 hover:text-rose-300'
@@ -2761,6 +2937,14 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     <span>{selectedMaterial.naturalOrSynthetic}</span>
                     <span>·</span>
                     <span>CAS {selectedMaterial.casNumber}</span>
+                    {selectedMaterial.scope === 'USER' && (
+                      <>
+                        <span>·</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-600/50 text-amber-300 text-[10px]">
+                          Custom User Material
+                        </span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                     <h2 className="text-xl sm:text-2xl font-sans font-semibold text-white break-words">
@@ -2778,14 +2962,37 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 <div className="flex flex-wrap items-center gap-2 w-full 2xl:w-auto">
                   <button
                     type="button"
+                    data-testid="dossier-toggle-shelf"
+                    onClick={() => handleToggleShelf(selectedMaterial.id)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                      isMaterialOnShelf(selectedMaterial)
+                        ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-rose-950/40 hover:border-rose-500/40 hover:text-rose-300'
+                        : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-cyan-600 hover:text-white hover:border-cyan-500'
+                    }`}
+                  >
+                    {isMaterialOnShelf(selectedMaterial) ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span>On My Shelf</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5 shrink-0" />
+                        <span>Add to My Shelf</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="dossier-toggle-workbench"
                     onClick={() => handleToggleWorkbench(selectedMaterial.id)}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                      workbenchMaterialIds.has(selectedMaterial.id)
+                      isMaterialOnWorkbench(selectedMaterial)
                         ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 hover:bg-rose-950/40 hover:border-rose-500/40 hover:text-rose-300'
                         : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-500'
                     }`}
                   >
-                    {workbenchMaterialIds.has(selectedMaterial.id) ? (
+                    {isMaterialOnWorkbench(selectedMaterial) ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         <span>On My Workbench</span>
@@ -2893,6 +3100,194 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             {/* TAB 1: PROFILE & STUDY NOTES */}
             {materialSubTab === 'profile' && (
               <div className="space-y-5">
+                {/* My Shelf Personal Organ Settings */}
+                <div
+                  data-testid="my-shelf-settings-card"
+                  className="rounded-lg bg-[#111621] border border-slate-800 p-4 sm:p-5 space-y-3 text-xs"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-semibold text-white">
+                        My Shelf &amp; Personal Organ Metadata
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Record your supplier, commercial product name, working dilution %, and personal study notes for {selectedMaterial.name}.
+                      </p>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium border ${
+                        isMaterialOnShelf(selectedMaterial)
+                          ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      {isMaterialOnShelf(selectedMaterial) ? 'Saved on My Shelf' : 'Not on My Shelf'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        Supplier Name
+                      </label>
+                      <input
+                        type="text"
+                        aria-label="Shelf Supplier Name"
+                        value={
+                          shelfMetaDraft[selectedMaterial.id]?.supplierName ??
+                          selectedMaterial.supplier ??
+                          ''
+                        }
+                        onChange={(e) =>
+                          setShelfMetaDraft((prev) => ({
+                            ...prev,
+                            [selectedMaterial.id]: {
+                              supplierName: e.target.value,
+                              supplierProductName:
+                                prev[selectedMaterial.id]?.supplierProductName ??
+                                selectedMaterial.supplierProductName ??
+                                '',
+                              workingDilutionPct:
+                                prev[selectedMaterial.id]?.workingDilutionPct ??
+                                String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100),
+                            },
+                          }))
+                        }
+                        placeholder="e.g. Pell Wall, Fraterworks, IFF"
+                        className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        Supplier Product Name
+                      </label>
+                      <input
+                        type="text"
+                        aria-label="Shelf Supplier Product Name"
+                        value={
+                          shelfMetaDraft[selectedMaterial.id]?.supplierProductName ??
+                          selectedMaterial.supplierProductName ??
+                          ''
+                        }
+                        onChange={(e) =>
+                          setShelfMetaDraft((prev) => ({
+                            ...prev,
+                            [selectedMaterial.id]: {
+                              supplierName:
+                                prev[selectedMaterial.id]?.supplierName ??
+                                selectedMaterial.supplier ??
+                                '',
+                              supplierProductName: e.target.value,
+                              workingDilutionPct:
+                                prev[selectedMaterial.id]?.workingDilutionPct ??
+                                String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100),
+                            },
+                          }))
+                        }
+                        placeholder="e.g. Bergamot Reggio FCF"
+                        className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        Working Dilution (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        max="100"
+                        step="0.1"
+                        aria-label="Shelf Working Dilution Percent"
+                        value={
+                          shelfMetaDraft[selectedMaterial.id]?.workingDilutionPct ??
+                          String(selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100)
+                        }
+                        onChange={(e) =>
+                          setShelfMetaDraft((prev) => ({
+                            ...prev,
+                            [selectedMaterial.id]: {
+                              supplierName:
+                                prev[selectedMaterial.id]?.supplierName ??
+                                selectedMaterial.supplier ??
+                                '',
+                              supplierProductName:
+                                prev[selectedMaterial.id]?.supplierProductName ??
+                                selectedMaterial.supplierProductName ??
+                                '',
+                              workingDilutionPct: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono-tabular text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Personal Organ Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      aria-label="Shelf Personal Notes"
+                      value={
+                        personalNotesDraft[selectedMaterial.id] !== undefined
+                          ? personalNotesDraft[selectedMaterial.id]
+                          : selectedMaterial.personalNotes || ''
+                      }
+                      onChange={(e) =>
+                        setPersonalNotesDraft((prev) => ({
+                          ...prev,
+                          [selectedMaterial.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="Your personal evaluation, blotter longevity, batch impressions..."
+                      className="w-full bg-[#0B0E14] border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      data-testid="save-shelf-metadata-btn"
+                      onClick={() => {
+                        const draft = shelfMetaDraft[selectedMaterial.id];
+                        const notes =
+                          personalNotesDraft[selectedMaterial.id] !== undefined
+                            ? personalNotesDraft[selectedMaterial.id]
+                            : selectedMaterial.personalNotes || '';
+                        const payload = {
+                          supplierName: draft?.supplierName ?? selectedMaterial.supplier ?? '',
+                          supplierProductName:
+                            draft?.supplierProductName ?? selectedMaterial.supplierProductName ?? '',
+                          workingDilutionPct: draft?.workingDilutionPct
+                            ? Number(draft.workingDilutionPct)
+                            : selectedMaterial.workingDilutionPct ?? selectedMaterial.recommendedDilution ?? 100,
+                          personalNotes: notes,
+                        };
+                        if (isMaterialOnShelf(selectedMaterial)) {
+                          if (onUpdateShelfItem) {
+                            void onUpdateShelfItem(selectedMaterial.id, payload);
+                          }
+                          triggerToast(`Updated My Shelf settings for "${selectedMaterial.name}"`);
+                        } else {
+                          if (onAddToShelf) {
+                            void onAddToShelf(selectedMaterial.id, {
+                              ...payload,
+                              isOnWorkbench: false,
+                            });
+                          }
+                          triggerToast(`Added "${selectedMaterial.name}" to My Shelf`);
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs font-medium transition-colors"
+                    >
+                      {isMaterialOnShelf(selectedMaterial)
+                        ? 'Save My Shelf Settings'
+                        : 'Add & Save to My Shelf'}
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {educationalPromptsEnabled && (
                     <div className="rounded-lg bg-[#111621] border border-slate-800 p-5">
@@ -3029,15 +3424,27 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   </div>
 
-                  {/* Dual Regulatory Progress Visual Slider: IFRA 51 + EU Cosmetics Regulation (EC 1223/2009) */}
+                  {/* Dual Regulatory Reference View: IFRA 51 + EU Cosmetics Regulation (EC 1223/2009) */}
                   <DualRegulatorySlider
                     materialName={selectedMaterial.name}
-                    currentPercent={selectedLimit?.maxAllowedPercent ? selectedLimit.maxAllowedPercent * 0.4 : 0.05}
+                    currentPercent={null}
                     ifraLimitPercent={selectedLimit?.maxAllowedPercent ?? null}
                     euLimitPercent={selectedLimit?.euCosmeticLimitPercent ?? selectedMaterial.euCosmeticLimitPercent ?? null}
                     ifraCategory="Cat 4 (Fine Fragrance)"
                     euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
                     isEuAllergen={Boolean(selectedLimit?.euAllergenDeclarable || selectedMaterial.euAllergenDeclarable)}
+                    leaveOnThresholdPct={selectedLimit?.euLabelThresholdLeaveOnPct ?? 0.001}
+                    rinseOffThresholdPct={selectedLimit?.euLabelThresholdRinseOffPct ?? 0.01}
+                    verificationStatus={
+                      selectedLimit?.verificationStatus ||
+                      (selectedLimit?.maxAllowedPercent === null || selectedLimit?.maxAllowedPercent === undefined
+                        ? 'LOOKUP_REQUIRED'
+                        : selectedLimit?.isDemoData
+                        ? 'DEMO'
+                        : 'PARTIALLY_VERIFIED')
+                    }
+                    sourceDocument={selectedLimit?.sourceDocument}
+                    sourceUrl={selectedLimit?.regulatorySources}
                     className="p-3.5 bg-[#0B0E14] border border-slate-800 rounded-lg"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -3059,14 +3466,35 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   </div>
 
-                  {selectedLimit?.isDemoData && (
+                  {(selectedLimit?.isDemoData || selectedLimit?.verificationStatus === 'DEMO') ? (
                     <div className="p-3 rounded bg-amber-950/30 border border-amber-800/60 flex items-start gap-2 text-xs text-amber-200">
                       <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                       <span>
-                        Regulatory values are verified against the IFRA 51st Amendment educational standard dataset (ScenTree CC BY-NC 4.0). Always confirm commercial lots against official supplier Certificate of Analysis (CoA) and IFRA Conformity Certificate.
+                        <strong>Educational demonstration data — not verified for compliance.</strong> Always confirm commercial lots against official supplier Certificate of Analysis (CoA), SDS, and IFRA Conformity Certificate.
                       </span>
                     </div>
-                  )}
+                  ) : selectedLimit?.verificationStatus === 'PARTIALLY_VERIFIED' ? (
+                    <div className="p-3 rounded bg-sky-950/30 border border-sky-800/60 flex items-start gap-2 text-xs text-sky-200">
+                      <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Partially verified:</strong> Sourced from {selectedLimit.sourceDocument}. Confirm all category-specific rules and commercial lot CoA before dermal compounding.
+                      </span>
+                    </div>
+                  ) : selectedLimit?.verificationStatus === 'VERIFIED_OFFICIAL' ? (
+                    <div className="p-3 rounded bg-emerald-950/30 border border-emerald-800/60 flex items-start gap-2 text-xs text-emerald-200">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Official source verified:</strong> {selectedLimit.sourceDocument}.
+                      </span>
+                    </div>
+                  ) : selectedLimit?.verificationStatus === 'USER_ENTERED_UNVERIFIED' ? (
+                    <div className="p-3 rounded bg-amber-950/30 border border-amber-800/60 flex items-start gap-2 text-xs text-amber-200">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>User-entered, unverified:</strong> Custom regulatory override not verified against an official IFRA or EU Cosmetics dossier.
+                      </span>
+                    </div>
+                  ) : null}
 
                   {selectedLimit?.maxAllowedPercent === null && (
                     <div className="p-4 rounded bg-slate-900/90 border border-slate-600 flex items-start gap-3 text-xs text-slate-200">

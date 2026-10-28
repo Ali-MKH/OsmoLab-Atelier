@@ -646,10 +646,181 @@ export default function App() {
     }
   }, [idToken, getAuthHeaders, applyServerWorkspace]);
 
+  // Hydrate the full 815-material v1.1 Global Catalog immediately on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/catalog');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data.materials) && data.materials.length > 0 && !idToken) {
+          setMaterials(data.materials as RawMaterial[]);
+        }
+        if (Array.isArray(data.regulatoryLimits) && data.regulatoryLimits.length > 0 && !idToken) {
+          setRegulatoryLimits(data.regulatoryLimits as MaterialRegulatoryLimit[]);
+        }
+      } catch {
+        // Fallback to embedded SEED_MATERIALS when offline
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [idToken]);
+
   // Load workspace from PostgreSQL strictly when authenticated with a verified Firebase ID token
   useEffect(() => {
     reloadWorkspaceData();
   }, [reloadWorkspaceData]);
+
+  // Shelf & Workbench handlers (Global Catalog -> My Shelf -> Current Workbench -> Formula)
+  const handleAddToShelf = useCallback(
+    async (
+      materialId: number,
+      payload: {
+        supplierName?: string | null;
+        supplierProductName?: string | null;
+        workingDilutionPct?: number | null;
+        personalNotes?: string | null;
+        isOnWorkbench?: boolean;
+        pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
+        favorite?: boolean;
+      } = {}
+    ) => {
+      setMaterials((prev) =>
+        prev.map((m) =>
+          m.id === materialId
+            ? {
+                ...m,
+                isOnShelf: true,
+                isOnWorkbench: payload.isOnWorkbench ?? m.isOnWorkbench ?? false,
+                supplier: payload.supplierName ?? m.supplier,
+                supplierProductName: payload.supplierProductName ?? m.supplierProductName,
+                workingDilutionPct:
+                  payload.workingDilutionPct ?? m.workingDilutionPct ?? m.recommendedDilution,
+                personalNotes: payload.personalNotes ?? m.personalNotes,
+                pyramidOverrideCode:
+                  payload.pyramidOverrideCode !== undefined
+                    ? payload.pyramidOverrideCode
+                    : m.pyramidOverrideCode,
+                favorite: payload.favorite ?? m.favorite,
+              }
+            : m
+        )
+      );
+      if (!idToken) return;
+      try {
+        const res = await fetch(`/api/shelf/${materialId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workspace) applyServerWorkspace(data.workspace);
+        }
+      } catch (err) {
+        console.warn('Queued shelf addition locally:', err);
+      }
+    },
+    [idToken, getAuthHeaders, applyServerWorkspace]
+  );
+
+  const handleUpdateShelfItem = useCallback(
+    async (
+      materialId: number,
+      payload: {
+        supplierName?: string | null;
+        supplierProductName?: string | null;
+        workingDilutionPct?: number | null;
+        personalNotes?: string | null;
+        isOnWorkbench?: boolean;
+        pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
+        favorite?: boolean;
+      }
+    ) => {
+      setMaterials((prev) =>
+        prev.map((m) => {
+          if (m.id !== materialId) return m;
+          // Pinning to workbench requires shelf membership
+          const nextOnShelf = m.isOnShelf || Boolean(payload.isOnWorkbench);
+          return {
+            ...m,
+            isOnShelf: nextOnShelf,
+            isOnWorkbench:
+              payload.isOnWorkbench !== undefined ? payload.isOnWorkbench : m.isOnWorkbench,
+            supplier:
+              payload.supplierName !== undefined && payload.supplierName !== null
+                ? payload.supplierName
+                : m.supplier,
+            supplierProductName:
+              payload.supplierProductName !== undefined
+                ? payload.supplierProductName || ''
+                : m.supplierProductName,
+            workingDilutionPct:
+              payload.workingDilutionPct !== undefined
+                ? payload.workingDilutionPct
+                : m.workingDilutionPct,
+            recommendedDilution:
+              payload.workingDilutionPct !== undefined && payload.workingDilutionPct !== null
+                ? payload.workingDilutionPct
+                : m.recommendedDilution,
+            personalNotes:
+              payload.personalNotes !== undefined && payload.personalNotes !== null
+                ? payload.personalNotes
+                : m.personalNotes,
+            pyramidOverrideCode:
+              payload.pyramidOverrideCode !== undefined
+                ? payload.pyramidOverrideCode
+                : m.pyramidOverrideCode,
+            favorite: payload.favorite !== undefined ? payload.favorite : m.favorite,
+          };
+        })
+      );
+      if (!idToken) return;
+      try {
+        const res = await fetch(`/api/shelf/${materialId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workspace) applyServerWorkspace(data.workspace);
+        }
+      } catch (err) {
+        console.warn('Queued shelf update locally:', err);
+      }
+    },
+    [idToken, getAuthHeaders, applyServerWorkspace]
+  );
+
+  const handleRemoveFromShelf = useCallback(
+    async (materialId: number) => {
+      // Removing from Shelf clears Workbench membership
+      setMaterials((prev) =>
+        prev.map((m) =>
+          m.id === materialId ? { ...m, isOnShelf: false, isOnWorkbench: false } : m
+        )
+      );
+      if (!idToken) return;
+      try {
+        const res = await fetch(`/api/shelf/${materialId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workspace) applyServerWorkspace(data.workspace);
+        }
+      } catch (err) {
+        console.warn('Queued shelf removal locally:', err);
+      }
+    },
+    [idToken, getAuthHeaders, applyServerWorkspace]
+  );
 
   // Retry handler passed to TabErrorBoundary to recover view state and reload workspace data
   const handleRetryViewData = useCallback(() => {
@@ -1439,6 +1610,7 @@ export default function App() {
           }}
           className="flex-1 p-3.5 sm:p-6 lg:p-8 lg:px-10 max-w-[1440px] w-full mx-auto min-w-0 space-y-6 sm:space-y-7"
         >
+          <div key={activeNav} className="animate-section-fade-in space-y-6 sm:space-y-7 w-full min-w-0">
           {/* 1. DASHBOARD VIEW */}
           {activeNav === 'dashboard' && (
             <TabErrorBoundary
@@ -1776,6 +1948,9 @@ export default function App() {
                 setSelectedMaterialId(matId);
                 setActiveNav('raw-materials');
               }}
+              onAddToShelf={(matId) => {
+                void handleAddToShelf(matId, { isOnWorkbench: false });
+              }}
             />
             </TabErrorBoundary>
           )}
@@ -2021,19 +2196,18 @@ export default function App() {
                 setActiveNav('formula-lab');
               }}
               onToggleWorkbenchMaterial={(id) => {
-                setMaterials((prev) =>
-                  prev.map((m) =>
-                    m.id === id
-                      ? { ...m, isOnWorkbench: m.isOnWorkbench === false ? true : false }
-                      : m
-                  )
-                );
+                const mat = materials.find((m) => m.id === id);
+                if (!mat) return;
+                void handleUpdateShelfItem(id, {
+                  isOnWorkbench: !Boolean(mat.isOnWorkbench),
+                });
               }}
               onUpdateMaterialNotes={(id, notes) => {
-                setMaterials((prev) =>
-                  prev.map((m) => (m.id === id ? { ...m, personalNotes: notes } : m))
-                );
+                void handleUpdateShelfItem(id, { personalNotes: notes });
               }}
+              onAddToShelf={handleAddToShelf}
+              onUpdateShelfItem={handleUpdateShelfItem}
+              onRemoveFromShelf={handleRemoveFromShelf}
             />
             </TabErrorBoundary>
           )}
@@ -2264,6 +2438,7 @@ export default function App() {
             />
             </TabErrorBoundary>
           )}
+          </div>
         </main>
 
         {/* Live Step-by-Step Interactive App Tour Floating Overlay */}

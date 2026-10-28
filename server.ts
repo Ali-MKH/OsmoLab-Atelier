@@ -19,9 +19,18 @@ import {
   addEvaluationInDb,
   upsertScentMemoryInDb,
   createAccordInDb,
+  updateAccordAndCreateVersion,
   updateUserSettingsInDb,
   deleteAccountDataInDb,
+  getUserShelf,
+  addToUserShelf,
+  updateUserShelfItem,
+  removeFromUserShelf,
+  ShelfValidationError,
+  FormulaIntegrityError,
 } from './src/db/workspace-repo.ts';
+import { PersistenceModeError } from './src/db/index.ts';
+import { loadGlobalCatalogV11 } from './src/db/catalog-v1-1.ts';
 
 dotenv.config();
 
@@ -38,6 +47,24 @@ function sendSafeRouteError(res: express.Response, error: unknown, fallbackMessa
     return res.status(error.statusCode).json({
       error: error.message,
       code: error.code,
+    });
+  }
+  if (error instanceof PersistenceModeError) {
+    return res.status(error.statusCode).json({
+      error: error.message,
+      code: 'PERSISTENCE_MODE_ERROR',
+    });
+  }
+  if (error instanceof ShelfValidationError) {
+    return res.status(error.statusCode).json({
+      error: error.message,
+      code: 'SHELF_VALIDATION_ERROR',
+    });
+  }
+  if (error instanceof FormulaIntegrityError) {
+    return res.status(error.statusCode).json({
+      error: error.message,
+      code: 'FORMULA_INTEGRITY_ERROR',
     });
   }
   if (error instanceof Error && error.message.startsWith('Forbidden:')) {
@@ -127,6 +154,22 @@ async function startServer() {
     });
   });
 
+  // 0b. Public Read-Only Global Catalog Endpoint (815 canonical v1.1 materials + regulatory records, zero user data)
+  app.get('/api/catalog', (_req, res) => {
+    try {
+      const catalog = loadGlobalCatalogV11();
+      res.json({
+        totalCatalogMaterials: catalog.materials.length,
+        materials: catalog.materials,
+        regulatoryLimits: catalog.regulatoryLimits,
+        regulatoryRecords: catalog.regulatoryRecords,
+        constituents: catalog.constituents,
+      });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load global catalog');
+    }
+  });
+
   // 1. Fetch full workspace (strictly requires verified Firebase Auth JWT)
   app.get('/api/workspace', requireAuth, async (req: AuthRequest, res) => {
     try {
@@ -136,6 +179,55 @@ async function startServer() {
       res.json(data);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load workspace');
+    }
+  });
+
+  // 1b. User Shelf & Workbench API (Global Catalog -> My Shelf -> Current Workbench -> Formula)
+  app.get('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const shelf = await getUserShelf(uid);
+      res.json({ shelf });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load user shelf');
+    }
+  });
+
+  app.post('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      assertStrictTenantPayload(req.body || {}, uid);
+      const materialId = Number(req.params.materialId);
+      const item = await addToUserShelf(uid, materialId, req.body || {});
+      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ item, shelf: workspace.userShelf, workspace });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
+    }
+  });
+
+  app.patch('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      assertStrictTenantPayload(req.body || {}, uid);
+      const materialId = Number(req.params.materialId);
+      const item = await updateUserShelfItem(uid, materialId, req.body || {});
+      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ item, shelf: workspace.userShelf, workspace });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to update My Shelf item');
+    }
+  });
+
+  app.delete('/api/shelf/:materialId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      const materialId = Number(req.params.materialId);
+      const result = await removeFromUserShelf(uid, materialId);
+      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ ...result, shelf: workspace.userShelf, workspace });
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to remove material from My Shelf');
     }
   });
 
@@ -220,6 +312,20 @@ async function startServer() {
       res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save accord');
+    }
+  });
+
+  // 9b. Create New Accord Version Snapshot (preserves historical formula accord references)
+  app.post('/api/accords/:accordId/versions', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      assertStrictTenantPayload(req.body, uid);
+      const accordId = Number(req.params.accordId);
+      await updateAccordAndCreateVersion(uid, accordId, req.body);
+      const workspace = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json(workspace);
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to create accord version');
     }
   });
 

@@ -93,6 +93,7 @@ interface FormulaLabViewProps {
   ) => Promise<void>;
   onOpenMentor: () => void;
   onInspectMaterial: (materialId: number) => void;
+  onAddToShelf?: (materialId: number) => void;
 }
 
 const FORMULA_STATUSES: FormulaStatus[] = [
@@ -127,6 +128,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   onSaveFormulaVersion,
   onOpenMentor,
   onInspectMaterial,
+  onAddToShelf,
 }) => {
   // Library state
   const [libraryViewStyle, setLibraryViewStyle] = useState<'cards' | 'table'>('cards');
@@ -371,7 +373,10 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         accords,
         effectiveRegulatoryLimits,
         selectedIfraCategory,
-        finalConc
+        finalConc,
+        {
+          intendedProduct: activeFormula.intendedProduct,
+        }
       ),
     [
       workingItems,
@@ -379,6 +384,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
       effectiveRegulatoryLimits,
       selectedIfraCategory,
       finalConc,
+      activeFormula.intendedProduct,
     ]
   );
 
@@ -426,6 +432,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
             sourceDocument: limitOverrideSource.trim() || existing.sourceDocument,
             documentVersion: 'Imported Regulatory Override',
             effectiveDate: new Date().toISOString().slice(0, 10),
+            verificationStatus: 'USER_ENTERED_UNVERIFIED',
             categoryLimitsTable: Array.isArray(existing.categoryLimitsTable)
               ? existing.categoryLimitsTable.map((row) => ({
                   ...row,
@@ -445,6 +452,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
             documentVersion: 'IFRA 51st Amendment',
             effectiveDate: new Date().toISOString().slice(0, 10),
             isDemoData: false,
+            verificationStatus: 'USER_ENTERED_UNVERIFIED',
           };
 
       const filtered = prev.filter(
@@ -2371,14 +2379,17 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
               const materialObj = item.materialId
                 ? materials.find((m) => m.id === item.materialId)
                 : undefined;
-              const isMissingFromWorkbench = Boolean(
-                materialObj && materialObj.isOnWorkbench === false
+              const isMissingFromShelf = Boolean(
+                materialObj &&
+                  (materialObj.isOnShelf !== undefined
+                    ? materialObj.isOnShelf === false
+                    : materialObj.isOnWorkbench === false)
               );
-              const ownedAlternatives = isMissingFromWorkbench
+              const ownedAlternatives = isMissingFromShelf
                 ? materials.filter(
                     (m) =>
                       m.id !== materialObj!.id &&
-                      m.isOnWorkbench !== false &&
+                      (m.isOnShelf !== undefined ? m.isOnShelf : m.isOnWorkbench !== false) &&
                       (m.primaryFamily === materialObj!.primaryFamily ||
                         m.volatility === materialObj!.volatility)
                   )
@@ -2426,15 +2437,25 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                           </span>
                         )}
 
-                        {/* Catalog -> My Workbench -> Formula Check */}
-                        {isMissingFromWorkbench && (
-                          <div className="inline-flex items-center gap-1 relative">
+                        {/* Catalog -> My Shelf -> Current Workbench -> Formula Check */}
+                        {isMissingFromShelf && materialObj && (
+                          <div className="inline-flex flex-wrap items-center gap-1 relative">
                             <span
                               data-testid="not-on-workbench-badge"
                               className="px-1.5 py-0.5 rounded bg-amber-950/70 border border-amber-600/60 text-amber-300 text-[10px] font-medium whitespace-nowrap"
                             >
-                              Not on My Workbench
+                              Not on My Shelf
                             </span>
+                            {onAddToShelf && (
+                              <button
+                                type="button"
+                                data-testid={`add-to-shelf-from-formula-${materialObj.id}`}
+                                onClick={() => onAddToShelf(materialObj.id)}
+                                className="px-1.5 py-0.5 rounded bg-cyan-950/70 hover:bg-cyan-900/70 border border-cyan-600/60 text-cyan-300 text-[10px] font-medium whitespace-nowrap transition-colors"
+                              >
+                                + Add to My Shelf
+                              </button>
+                            )}
                             {ownedAlternatives.length > 0 && (
                               <button
                                 type="button"
@@ -2451,7 +2472,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                             {altSwapOpenLineId === item.id && ownedAlternatives.length > 0 && (
                               <div className="absolute left-0 top-full mt-1 z-30 w-64 rounded-lg bg-[#0B0E14] border border-slate-700 shadow-2xl p-2 space-y-1 text-[11px]">
                                 <div className="flex items-center justify-between text-slate-400 pb-1 border-b border-slate-800">
-                                  <span>Owned Alternatives on My Workbench</span>
+                                  <span>Owned Alternatives on My Shelf</span>
                                   <button
                                     type="button"
                                     onClick={() => setAltSwapOpenLineId(null)}
@@ -2663,7 +2684,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                 onChange={(e) => setAddMaterialId(Number(e.target.value))}
                 className="flex-1 min-w-0 bg-[#111621] border border-slate-800 rounded-md px-3 py-2 sm:py-1.5 text-xs text-white truncate max-w-full"
               >
-                <optgroup label="My Workbench (Owned Ingredients)">
+                <optgroup label="Current Workbench (Pinned Bench Ingredients)">
                   {materials
                     .filter((m) => m.isOnWorkbench !== false)
                     .map((m) => (
@@ -2672,13 +2693,36 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                       </option>
                     ))}
                 </optgroup>
-                {materials.some((m) => m.isOnWorkbench === false) && (
-                  <optgroup label="Catalog (Not on My Workbench)">
+                {materials.some(
+                  (m) =>
+                    (m.isOnShelf !== undefined ? m.isOnShelf : m.isOnWorkbench !== false) &&
+                    m.isOnWorkbench === false
+                ) && (
+                  <optgroup label="My Shelf (Owned Ingredients)">
                     {materials
-                      .filter((m) => m.isOnWorkbench === false)
+                      .filter(
+                        (m) =>
+                          (m.isOnShelf !== undefined ? m.isOnShelf : m.isOnWorkbench !== false) &&
+                          m.isOnWorkbench === false
+                      )
+                      .map((m) => (
+                        <option key={m.id} value={m.id} className="bg-[#111622] text-cyan-200">
+                          [My Shelf] {m.name} ({m.primaryFamily} · {m.volatility})
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {materials.some((m) =>
+                  m.isOnShelf !== undefined ? m.isOnShelf === false : m.isOnWorkbench === false
+                ) && (
+                  <optgroup label="Entire Catalog (Not on My Shelf)">
+                    {materials
+                      .filter((m) =>
+                        m.isOnShelf !== undefined ? m.isOnShelf === false : m.isOnWorkbench === false
+                      )
                       .map((m) => (
                         <option key={m.id} value={m.id} className="bg-[#111622] text-amber-300">
-                          [Not on My Workbench] {m.name} ({m.primaryFamily})
+                          [Not on My Shelf] {m.name} ({m.primaryFamily})
                         </option>
                       ))}
                   </optgroup>
@@ -2895,11 +2939,29 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                   <span className="text-xs font-semibold text-white">
                     Dual Regulatory Compliance: IFRA 51st Amendment & EU Cosmetics Regulation (EC 1223/2009)
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold bg-sky-950/60 border border-sky-600/50 text-sky-300">
-                    IFRA Cat 4 (Finished Product): {safetyReport.overallCompliant ? '100% Compliant' : `${safetyReport.violationCount} Violations`}
+                  <span
+                    data-testid="formula-overall-compliance-state"
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold ${
+                      safetyReport.complianceState === 'COMPLIANT'
+                        ? 'bg-emerald-950/60 border border-emerald-600/50 text-emerald-300'
+                        : safetyReport.complianceState === 'NON_COMPLIANT'
+                        ? 'bg-rose-950/60 border border-rose-600/50 text-rose-300'
+                        : 'bg-amber-950/60 border border-amber-600/50 text-amber-300'
+                    }`}
+                  >
+                    Overall: {safetyReport.complianceState}
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold bg-emerald-950/60 border border-emerald-600/50 text-emerald-300">
-                    EU Annex III: {safetyReport.euOverallCompliant !== false ? '100% Compliant' : `${safetyReport.euViolationCount} Violations`}
+                  <span
+                    data-testid="formula-ifra-compliance-state"
+                    className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold bg-sky-950/60 border border-sky-600/50 text-sky-300"
+                  >
+                    IFRA ({selectedIfraCategory}): {safetyReport.ifraComplianceState} ({safetyReport.violationCount} Violations · {safetyReport.indeterminateCount} Indeterminate)
+                  </span>
+                  <span
+                    data-testid="formula-eu-compliance-state"
+                    className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold bg-emerald-950/60 border border-emerald-600/50 text-emerald-300"
+                  >
+                    EU Annex II/III: {safetyReport.euComplianceState} ({safetyReport.euViolationCount} Violations)
                   </span>
                   {safetyReport.euAllergenDeclarationCount !== undefined && safetyReport.euAllergenDeclarationCount > 0 && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono-tabular bg-amber-950/60 border border-amber-600/50 text-amber-300">
@@ -3006,12 +3068,14 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                             )}
                             <span
                               className={
-                                ev.euComplianceStatus === 'Exceeds EU limit'
+                                ev.euComplianceStatus === 'Exceeds EU limit' || ev.euComplianceStatus === 'Prohibited (EU Annex II)'
                                   ? 'text-rose-400 font-semibold text-[10px]'
+                                  : ev.euComplianceStatus === 'EU limit unavailable'
+                                  ? 'text-amber-300 text-[10px]'
                                   : 'text-slate-300 text-[10px]'
                               }
                             >
-                              EU Annex III: {ev.euComplianceStatus === 'Exceeds EU limit' ? 'Exceeds EU Annex III' : 'Pass'}
+                              EU: {ev.euComplianceStatus || 'Pass'}
                             </span>
                           </div>
                         </td>
@@ -3021,6 +3085,66 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Constituent-Level Allergen Aggregation Across Direct Materials & Nested Accords */}
+            {safetyReport.aggregatedAllergens.length > 0 && (
+              <div className="rounded border border-slate-800 bg-[#0B0E14] p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-white">
+                    Constituent-Level Allergen Aggregation (Direct Materials + Nested Accords · Exposure: {safetyReport.exposureType})
+                  </span>
+                  <span className="text-[11px] font-mono-tabular text-slate-400">
+                    Declaration Threshold: {safetyReport.exposureType === 'RINSE_OFF' ? '0.010% (Rinse-Off)' : safetyReport.exposureType === 'LEAVE_ON' ? '0.001% (Leave-On)' : 'Indeterminate Exposure'}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[11px] text-slate-400">
+                        <th className="py-1.5 px-2 font-medium">Constituent</th>
+                        <th className="py-1.5 px-2 font-medium">CAS</th>
+                        <th className="py-1.5 px-2 font-medium">Contributing Sources</th>
+                        <th className="py-1.5 px-2 font-medium text-right">Aggregated Finished %</th>
+                        <th className="py-1.5 px-2 font-medium text-right">Threshold</th>
+                        <th className="py-1.5 px-2 font-medium">Declaration Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {safetyReport.aggregatedAllergens.map((agg) => (
+                        <tr key={agg.constituentKey}>
+                          <td className="py-1.5 px-2 font-medium text-white">{agg.constituentName}</td>
+                          <td className="py-1.5 px-2 font-mono-tabular text-slate-400">{agg.constituentCas || '—'}</td>
+                          <td className="py-1.5 px-2 text-slate-300">
+                            {agg.sources
+                              .map((c) => `${c.materialName} (${c.typicalPctInMaterial !== null ? `${c.typicalPctInMaterial}%` : '?%'})`)
+                              .join(', ')}
+                          </td>
+                          <td className="py-1.5 px-2 text-right font-mono-tabular text-white">
+                            {agg.totalFinalProductPct.toFixed(5)}%
+                          </td>
+                          <td className="py-1.5 px-2 text-right font-mono-tabular text-slate-400">
+                            {agg.applicableThresholdPct !== null ? `${agg.applicableThresholdPct.toFixed(3)}%` : 'INDETERMINATE'}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            {agg.declarationStatus === 'INDETERMINATE' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-500 text-slate-200 text-[10px] font-mono-tabular font-semibold">
+                                INDETERMINATE
+                              </span>
+                            ) : agg.requiresDeclaration ? (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-600/50 text-amber-300 text-[10px] font-mono-tabular font-semibold">
+                                DECLARABLE ON LABEL
+                              </span>
+                            ) : (
+                              <span className="text-emerald-400 text-[11px] font-medium">Below Threshold</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

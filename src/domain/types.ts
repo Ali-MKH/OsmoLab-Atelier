@@ -23,18 +23,52 @@ export interface OlfactoryFamilyDef {
   subFacets: string[];
 }
 
+export type MaterialScope = 'GLOBAL' | 'USER';
+
+export type PyramidPrimaryZone = 'TOP' | 'HEART' | 'BASE' | 'ALL' | 'UNSPECIFIED';
+
+export type PyramidUiCode =
+  | 'T'
+  | 'TH'
+  | 'H'
+  | 'HB'
+  | 'B'
+  | 'THB'
+  | 'TB'
+  | 'NA';
+
+export type PyramidConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+
 export interface RawMaterial {
   id: number;
+  catalogKey?: string;
+  scope?: MaterialScope;
+  ownerUid?: string | null;
+  displayName?: string;
   name: string;
   aliases: string;
   casNumber: string;
   inciName: string;
   naturalOrSynthetic: 'Natural' | 'Synthetic' | 'Base';
+  materialKind?: string;
   supplier: string;
   supplierProductCode: string;
+  supplierProductName?: string;
   manufacturer: string;
   primaryFamily: string;
   facets: string[];
+  odorSummary?: string;
+  roleTopHeartBase?: string;
+  pyramidUsage?: string;
+  pyramidPrimaryZone?: PyramidPrimaryZone;
+  pyramidHighlightTop?: boolean;
+  pyramidHighlightHeart?: boolean;
+  pyramidHighlightBase?: boolean;
+  pyramidUiCode?: PyramidUiCode;
+  pyramidConfidence?: PyramidConfidence;
+  pyramidBasis?: string;
+  pyramidNote?: string;
+  olfactoryStrength?: string;
   intensity: number; // 1-10
   substantivityHours: number;
   diffusion: number; // 1-10
@@ -46,6 +80,7 @@ export interface RawMaterial {
   purity: string;
   density: number;
   recommendedDilution: number; // e.g. 100 for neat, 10 for 10%
+  workingDilutionPct?: number | null;
   storageInfo: string;
   shelfLifeMonths: number;
   flashPointCelsius: number | null;
@@ -53,13 +88,109 @@ export interface RawMaterial {
   complements: string[];
   contrasts: string[];
   isSeedData?: boolean;
+  isOnShelf?: boolean;
   isOnWorkbench?: boolean;
+  pyramidOverrideCode?: PyramidUiCode | null;
+  favorite?: boolean;
   costPerGram?: number;
   impactRating?: number; // 1-10
   alsoCalled?: string[];
   euCosmeticLimitPercent?: number | null;
   euCosmeticNote?: string;
   euAllergenDeclarable?: boolean;
+  sourceSection?: string;
+  catalogSource?: string;
+  catalogSourceUrl?: string;
+  sourceLicense?: string;
+  sourceLicenseUrl?: string;
+  starterPriority?: string;
+}
+
+export interface UserShelfItem {
+  id: number;
+  userUid: string;
+  materialId: number;
+  catalogKey?: string;
+  supplierName: string;
+  supplierProductName: string;
+  workingDilutionPct: number | null;
+  personalNotes: string;
+  isOnWorkbench: boolean;
+  pyramidOverrideCode: PyramidUiCode | null;
+  favorite: boolean;
+  addedAt: string;
+  updatedAt: string;
+}
+
+export interface ShelfMutationPayload {
+  supplierName?: string;
+  supplierProductName?: string;
+  workingDilutionPct?: number | null;
+  personalNotes?: string;
+  isOnWorkbench?: boolean;
+  pyramidOverrideCode?: PyramidUiCode | null;
+  favorite?: boolean;
+}
+
+export type RegulatoryAuthority = 'IFRA' | 'EU_COSMETICS' | 'SUPPLIER' | 'USER';
+
+export type RegulatoryRuleType =
+  | 'MAX_USE'
+  | 'PROHIBITION'
+  | 'SPECIFICATION'
+  | 'LABEL_THRESHOLD'
+  | 'CONSTITUENT_CONTRIBUTION'
+  | 'INFORMATION';
+
+export type RegulatoryVerificationStatus =
+  | 'VERIFIED_OFFICIAL'
+  | 'PARTIALLY_VERIFIED'
+  | 'LOOKUP_REQUIRED'
+  | 'USER_ENTERED_UNVERIFIED'
+  | 'DEMO';
+
+export type ComplianceState = 'COMPLIANT' | 'NON_COMPLIANT' | 'INDETERMINATE';
+
+export type ProductExposureType = 'LEAVE_ON' | 'RINSE_OFF' | 'NON_SKIN' | 'AMBIGUOUS';
+
+export interface MaterialRegulatoryRecord {
+  id: number;
+  materialId: number;
+  userUid?: string | null;
+  jurisdiction: string; // 'GLOBAL' | 'EU' | 'SUPPLIER' | 'USER'
+  authority: RegulatoryAuthority;
+  ruleType: RegulatoryRuleType;
+  status: string;
+  standardOrAnnex: string;
+  referenceNumber: string;
+  productCategory: string | null; // e.g. 'Cat 4', 'Cat 5A', or null for non-category rules
+  maxFinishedProductPct: number | null;
+  maxReadyForUsePct: number | null;
+  labelThresholdLeaveOnPct: number | null;
+  labelThresholdRinseOffPct: number | null;
+  conditionText: string;
+  summary: string;
+  sourceUrl: string;
+  sourceDocument: string;
+  sourceVersion: string;
+  verifiedAt: string | null;
+  verificationStatus: RegulatoryVerificationStatus;
+}
+
+export interface MaterialConstituent {
+  id: number;
+  materialId: number;
+  constituentName: string;
+  constituentCas: string;
+  typicalPct: number | null; // null if constituent is known to be present but % is missing
+  minPct: number | null;
+  maxPct: number | null;
+  labelThresholdLeaveOnPct?: number | null;
+  labelThresholdRinseOffPct?: number | null;
+  riskNote?: string;
+  sourceUrl: string;
+  sourceDocument: string;
+  verificationStatus: RegulatoryVerificationStatus;
 }
 
 export interface IFRACategoryLimit {
@@ -67,14 +198,17 @@ export interface IFRACategoryLimit {
   categoryName: string;
   maxAllowedPercent: number | null; // null = not permitted or unassigned
   description: string;
+  verificationStatus?: RegulatoryVerificationStatus;
 }
 
 export interface AllergenConstituent {
   name: string;
   casNumber: string;
-  typicalPercent: number; // e.g. 38% limonene in bergamot
+  typicalPercent: number | null; // e.g. 38% limonene in bergamot; null if missing
   euThresholdPercent: number; // e.g. 0.001 for leave-on, 0.01 for rinse-off
+  euThresholdRinseOffPercent?: number; // e.g. 0.01 for rinse-off
   riskNote: string;
+  verificationStatus?: RegulatoryVerificationStatus;
 }
 
 export interface PuritySpecification {
@@ -95,6 +229,16 @@ export interface MaterialRegulatoryLimit {
   documentVersion: string;
   effectiveDate: string;
   isDemoData: boolean;
+  verificationStatus?: RegulatoryVerificationStatus;
+  ifraStandardStatus?: string;
+  ifraStandardType?: string;
+  euCosmeticsStatus?: string;
+  euAnnex?: string;
+  euReferenceNo?: string;
+  euLabelThresholdLeaveOnPct?: number | null;
+  euLabelThresholdRinseOffPct?: number | null;
+  regulatorySources?: string;
+  lastVerifiedDate?: string;
   // Enhanced Regulatory Compliance Detail
   amendmentStatus?: string;
   restrictionType?: 'RESTRICTION' | 'SPECIFICATION' | 'PROHIBITION' | 'NOT_RESTRICTED';
@@ -107,6 +251,8 @@ export interface MaterialRegulatoryLimit {
   euCosmeticLimitPercent?: number | null;
   euRegulationReference?: string;
   euAllergenDeclarable?: boolean;
+  regulatoryRecords?: MaterialRegulatoryRecord[];
+  constituents?: MaterialConstituent[];
 }
 
 export interface ScentMemoryRecord {
@@ -129,6 +275,8 @@ export interface ScentMemoryRecord {
 }
 
 export interface AccordItem {
+  id?: number;
+  lineOrder?: number;
   materialId: number;
   materialName: string;
   percentage: number;
@@ -137,8 +285,11 @@ export interface AccordItem {
 }
 
 export interface AccordVersionSnapshot {
+  id?: number;
+  accordId?: number;
   versionId: string;
   versionLabel: string;
+  status?: 'Draft' | 'Committed';
   createdAt: string;
   versionNotes: string;
   items: AccordItem[];
@@ -155,15 +306,40 @@ export interface AccordDefinition {
   isEducational: boolean;
   items: AccordItem[];
   olfactoryProfile: Record<string, number>;
+  activeVersionId?: number;
   activeVersionLabel?: string;
   versions?: AccordVersionSnapshot[];
 }
 
+export interface NormalizedFormulaVersionItem {
+  id: number;
+  formulaVersionId: number;
+  lineOrder: number;
+  itemType: 'MATERIAL' | 'ACCORD';
+  materialId: number | null;
+  accordId?: number | null;
+  accordVersionId: number | null;
+  name: string;
+  percentage: number;
+  quantityGrams: number;
+  dilutionPct: number;
+  solvent: string;
+  activeMaterialPct: number;
+  supplier: string;
+  costPerGram: number;
+  notes: string;
+  createdAt: string;
+}
+
 export interface FormulaLineItem {
   id: string;
+  lineOrder?: number;
   type: 'material' | 'accord';
+  itemType?: 'MATERIAL' | 'ACCORD';
   materialId?: number;
   accordId?: number;
+  accordVersionId?: number | null;
+  accordVersionLabel?: string;
   parentAccordId?: number; // only if referencing another accord
   name: string;
   quantityGrams: number;
@@ -185,6 +361,7 @@ export interface FormulaVersion {
   versionNotes: string;
   maturationDays: number;
   items: FormulaLineItem[];
+  normalizedItems?: NormalizedFormulaVersionItem[];
   createdAt: string;
 }
 
@@ -222,6 +399,7 @@ export interface Formula {
 export interface ExperimentEntry {
   id: number;
   formulaId: number;
+  formulaVersionId?: number | null;
   formulaVersionLabel: string;
   stageLabel: string; // e.g. 'Day 0', '15 min', '2 h', '24 h', 'Day 7', 'Day 30'
   observation: string;
@@ -231,6 +409,7 @@ export interface ExperimentEntry {
 export interface SensoryEvaluation {
   id: number;
   formulaId: number;
+  formulaVersionId?: number | null;
   formulaVersionLabel: string;
   checkpoint: string;
   overallScore: number;
@@ -248,6 +427,7 @@ export interface MaterialUsageReview {
   id: number;
   materialId: number;
   formulaId: number;
+  formulaVersionId?: number | null;
   formulaName: string;
   versionLabel: string;
   percentageUsed: number;

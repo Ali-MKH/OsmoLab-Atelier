@@ -1,75 +1,110 @@
 import React from 'react';
-import { ShieldCheck, ShieldAlert, AlertTriangle, Info, Check } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, AlertTriangle, Info, ExternalLink } from 'lucide-react';
+import { RegulatoryVerificationStatus } from '../domain/types';
+import { formatVerificationStatusLabel } from '../domain/safety-engine';
 
 interface DualRegulatorySliderProps {
   materialName: string;
-  currentPercent: number; // e.g. 0.08 (% in finished product or formula)
+  currentPercent?: number | null; // Optional: pass null/undefined in Material Detail view outside a formula context
   ifraLimitPercent: number | null; // e.g. 0.10 (% maximum allowed)
   euLimitPercent: number | null; // e.g. 0.10 (% EU Annex III threshold)
   ifraCategory?: string;
   euRegulationReference?: string;
   isEuAllergen?: boolean;
+  leaveOnThresholdPct?: number | null;
+  rinseOffThresholdPct?: number | null;
+  verificationStatus?: RegulatoryVerificationStatus;
+  sourceDocument?: string;
+  sourceUrl?: string | null;
   compact?: boolean;
   className?: string;
 }
 
 export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
   materialName,
-  currentPercent,
+  currentPercent = null,
   ifraLimitPercent,
   euLimitPercent,
   ifraCategory = 'Cat 4 (Fine Fragrance)',
   euRegulationReference = 'EU Cosmetics Reg. (EC 1223/2009)',
   isEuAllergen = false,
+  leaveOnThresholdPct = 0.001,
+  rinseOffThresholdPct = 0.01,
+  verificationStatus,
+  sourceDocument,
+  sourceUrl,
   compact = false,
   className = '',
 }) => {
-  // Determine scale maximum for visual progress bar (at least 25% larger than the max value, or 100%)
+  const hasFormulaUsageContext = currentPercent !== null && currentPercent !== undefined;
+  const effectiveCurrentPct = hasFormulaUsageContext ? currentPercent : 0;
+
   const hasIfra = ifraLimitPercent !== null && ifraLimitPercent !== undefined;
   const hasEu = euLimitPercent !== null && euLimitPercent !== undefined;
 
   const validLimits = [
     hasIfra ? ifraLimitPercent! : 0,
     hasEu ? euLimitPercent! : 0,
-    currentPercent,
+    effectiveCurrentPct,
   ];
   const maxBenchmark = Math.max(...validLimits, 0.001);
   const scaleMax = maxBenchmark > 50 ? 100 : Math.max(0.1, maxBenchmark * 1.35);
 
-  const currentPosPct = Math.min(100, Math.max(0, (currentPercent / scaleMax) * 100));
+  const currentPosPct = hasFormulaUsageContext
+    ? Math.min(100, Math.max(0, (effectiveCurrentPct / scaleMax) * 100))
+    : 0;
   const ifraPosPct = hasIfra ? Math.min(100, Math.max(0, (ifraLimitPercent! / scaleMax) * 100)) : null;
   const euPosPct = hasEu ? Math.min(100, Math.max(0, (euLimitPercent! / scaleMax) * 100)) : null;
 
-  // Status checks & Regulatory Heatmap (<50% Emerald #10B981, 50%-80% Amber #F59E0B, >80% Rose #EF4444, Lookup Required #64748B, Prohibited Crimson)
-  const isLookupRequired = !hasIfra;
+  const isLookupRequired = !hasIfra || verificationStatus === 'LOOKUP_REQUIRED';
   const isProhibited = (hasIfra && ifraLimitPercent === 0) || (hasEu && euLimitPercent === 0);
 
   const ifraUtilization =
-    hasIfra && ifraLimitPercent! > 0
-      ? (currentPercent / ifraLimitPercent!) * 100
-      : hasIfra && ifraLimitPercent === 0 && currentPercent > 0
+    hasFormulaUsageContext && hasIfra && ifraLimitPercent! > 0
+      ? (effectiveCurrentPct / ifraLimitPercent!) * 100
+      : hasFormulaUsageContext && hasIfra && ifraLimitPercent === 0 && effectiveCurrentPct > 0
       ? 100
       : 0;
   const euUtilization =
-    hasEu && euLimitPercent! > 0
-      ? (currentPercent / euLimitPercent!) * 100
-      : hasEu && euLimitPercent === 0 && currentPercent > 0
+    hasFormulaUsageContext && hasEu && euLimitPercent! > 0
+      ? (effectiveCurrentPct / euLimitPercent!) * 100
+      : hasFormulaUsageContext && hasEu && euLimitPercent === 0 && effectiveCurrentPct > 0
       ? 100
       : 0;
   const maxUtilization = Math.max(ifraUtilization, euUtilization);
 
-  const isIfraExceeded = hasIfra && (ifraLimitPercent === 0 || currentPercent > ifraLimitPercent!);
-  const isIfraHighWarning = hasIfra && !isIfraExceeded && ifraUtilization > 80 && ifraLimitPercent! < 100;
-  const isIfraCaution = hasIfra && !isIfraExceeded && !isIfraHighWarning && ifraUtilization >= 50 && ifraLimitPercent! < 100;
+  const isIfraExceeded =
+    hasFormulaUsageContext && hasIfra && (ifraLimitPercent === 0 || effectiveCurrentPct > ifraLimitPercent!);
+  const isIfraHighWarning =
+    hasFormulaUsageContext && hasIfra && !isIfraExceeded && ifraUtilization > 80 && ifraLimitPercent! < 100;
+  const isIfraCaution =
+    hasFormulaUsageContext &&
+    hasIfra &&
+    !isIfraExceeded &&
+    !isIfraHighWarning &&
+    ifraUtilization >= 50 &&
+    ifraLimitPercent! < 100;
 
-  const isEuExceeded = hasEu && (euLimitPercent === 0 || currentPercent > euLimitPercent!);
-  const isEuHighWarning = hasEu && !isEuExceeded && euUtilization > 80 && euLimitPercent! < 100;
-  const isEuCaution = hasEu && !isEuExceeded && !isEuHighWarning && euUtilization >= 50 && euLimitPercent! < 100;
+  const isEuExceeded =
+    hasFormulaUsageContext && hasEu && (euLimitPercent === 0 || effectiveCurrentPct > euLimitPercent!);
+  const isEuHighWarning =
+    hasFormulaUsageContext && hasEu && !isEuExceeded && euUtilization > 80 && euLimitPercent! < 100;
+  const isEuCaution =
+    hasFormulaUsageContext &&
+    hasEu &&
+    !isEuExceeded &&
+    !isEuHighWarning &&
+    euUtilization >= 50 &&
+    euLimitPercent! < 100;
 
   const isOverallExceededOrHighWarning =
     isProhibited || isIfraExceeded || isEuExceeded || isIfraHighWarning || isEuHighWarning;
   const isOverallCaution =
     !isOverallExceededOrHighWarning && !isLookupRequired && (isIfraCaution || isEuCaution);
+
+  const resolvedVerificationStatus: RegulatoryVerificationStatus =
+    verificationStatus || (isLookupRequired ? 'LOOKUP_REQUIRED' : 'PARTIALLY_VERIFIED');
+  const verificationStatusLabel = formatVerificationStatusLabel(resolvedVerificationStatus);
 
   // Compact variant for tables, line items, and micro-cards
   if (compact) {
@@ -77,19 +112,20 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
       <div className={`space-y-1.5 ${className}`} data-testid={`dual-regulatory-slider-compact-${materialName}`}>
         {/* Dual Progress Meter Bar */}
         <div className="relative w-full h-3 bg-slate-900 rounded-full border border-slate-700/80 overflow-visible">
-          {/* Active fill */}
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              isProhibited || isIfraExceeded || isEuExceeded || isIfraHighWarning || isEuHighWarning
-                ? 'bg-rose-500'
-                : isLookupRequired
-                ? 'bg-slate-500'
-                : isOverallCaution
-                ? 'bg-amber-500'
-                : 'bg-emerald-500'
-            }`}
-            style={{ width: `${currentPosPct}%` }}
-          />
+          {hasFormulaUsageContext && (
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                isProhibited || isIfraExceeded || isEuExceeded || isIfraHighWarning || isEuHighWarning
+                  ? 'bg-rose-500'
+                  : isLookupRequired
+                  ? 'bg-slate-500'
+                  : isOverallCaution
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+              }`}
+              style={{ width: `${currentPosPct}%` }}
+            />
+          )}
 
           {/* IFRA Limit Pin Marker */}
           {ifraPosPct !== null && (
@@ -117,7 +153,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
         {/* Labels row */}
         <div className="flex items-center justify-between text-[10px] font-mono-tabular">
           <span className="text-white font-medium">
-            Curr: {currentPercent.toFixed(3)}%
+            {hasFormulaUsageContext ? `Curr: ${effectiveCurrentPct.toFixed(3)}%` : 'Reference Limits'}
           </span>
           <div className="flex items-center gap-2">
             {hasIfra ? (
@@ -156,7 +192,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
     );
   }
 
-  // Full detailed card view for Material Profile and Safety Reports
+  // Full detailed card view for Material Profile (Reference Mode) and Safety Reports (Formula Context Mode)
   return (
     <div
       data-testid={`dual-regulatory-slider-full-${materialName}`}
@@ -182,7 +218,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {isEuAllergen && (
             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 border border-amber-500/40 text-amber-300">
-              EU Allergen Declarable (&gt;0.001% leave-on / &gt;0.01% rinse-off)
+              EU Allergen Declarable (&gt;{(leaveOnThresholdPct ?? 0.001).toFixed(3)}% leave-on / &gt;{(rinseOffThresholdPct ?? 0.01).toFixed(2)}% rinse-off)
             </span>
           )}
           {isProhibited ? (
@@ -195,6 +231,19 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
               className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold uppercase tracking-wider bg-slate-700/90 border border-slate-500 text-slate-100"
             >
               LOOKUP_REQUIRED
+            </span>
+          ) : !hasFormulaUsageContext ? (
+            <span
+              data-testid="regulatory-verification-status-badge"
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
+                resolvedVerificationStatus === 'VERIFIED_OFFICIAL'
+                  ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300'
+                  : resolvedVerificationStatus === 'PARTIALLY_VERIFIED'
+                  ? 'bg-sky-500/20 border border-sky-500/50 text-sky-300'
+                  : 'bg-amber-500/20 border border-amber-500/50 text-amber-300'
+              }`}
+            >
+              {verificationStatusLabel}
             </span>
           ) : (
             <span
@@ -257,19 +306,21 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
               <span className="h-full border-r border-white text-[8px] flex items-end">{scaleMax.toFixed(1)}%</span>
             </div>
 
-            {/* Current Concentration Fill Bar */}
-            <div
-              className={`h-full rounded-md transition-all duration-300 ${
-                isIfraExceeded || isIfraHighWarning
-                  ? 'bg-rose-500/80 border-r-2 border-rose-400'
-                  : isLookupRequired
-                  ? 'bg-slate-600/70 border-r-2 border-slate-400'
-                  : isIfraCaution
-                  ? 'bg-amber-500/80 border-r-2 border-amber-300'
-                  : 'bg-emerald-500/75 border-r-2 border-emerald-300'
-              }`}
-              style={{ width: `${currentPosPct}%` }}
-            />
+            {/* Current Concentration Fill Bar (ONLY rendered in active Formula context) */}
+            {hasFormulaUsageContext && (
+              <div
+                className={`h-full rounded-md transition-all duration-300 ${
+                  isIfraExceeded || isIfraHighWarning
+                    ? 'bg-rose-500/80 border-r-2 border-rose-400'
+                    : isLookupRequired
+                    ? 'bg-slate-600/70 border-r-2 border-slate-400'
+                    : isIfraCaution
+                    ? 'bg-amber-500/80 border-r-2 border-amber-300'
+                    : 'bg-emerald-500/75 border-r-2 border-emerald-300'
+                }`}
+                style={{ width: `${currentPosPct}%` }}
+              />
+            )}
 
             {/* IFRA Limit Marker Pin */}
             {ifraPosPct !== null && (
@@ -328,17 +379,19 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
               <span className="h-full border-r border-white text-[8px] flex items-end">{scaleMax.toFixed(1)}%</span>
             </div>
 
-            {/* Current Concentration Fill Bar */}
-            <div
-              className={`h-full rounded-md transition-all duration-300 ${
-                isEuExceeded || isEuHighWarning
-                  ? 'bg-rose-500/80 border-r-2 border-rose-400'
-                  : isEuCaution
-                  ? 'bg-amber-400/80 border-r-2 border-amber-300'
-                  : 'bg-emerald-500/70 border-r-2 border-emerald-300'
-              }`}
-              style={{ width: `${currentPosPct}%` }}
-            />
+            {/* Current Concentration Fill Bar (ONLY rendered in active Formula context) */}
+            {hasFormulaUsageContext && (
+              <div
+                className={`h-full rounded-md transition-all duration-300 ${
+                  isEuExceeded || isEuHighWarning
+                    ? 'bg-rose-500/80 border-r-2 border-rose-400'
+                    : isEuCaution
+                    ? 'bg-amber-400/80 border-r-2 border-amber-300'
+                    : 'bg-emerald-500/70 border-r-2 border-emerald-300'
+                }`}
+                style={{ width: `${currentPosPct}%` }}
+              />
+            )}
 
             {/* EU Limit Marker Pin */}
             {euPosPct !== null && (
@@ -363,20 +416,41 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
         </div>
       </div>
 
-      {/* Summary Footer with Current Concentration Marker & Regulatory Notes */}
+      {/* Summary Footer with Reference Mode or Formula Usage Context */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-800/60 text-xs">
-        <div className="font-mono-tabular text-slate-300 flex items-center gap-2">
-          <span className="text-slate-400">Finished Consumer Product Usage:</span>
-          <span className="px-2 py-0.5 rounded bg-[#111621] border border-slate-700 text-white font-bold">
-            {currentPercent.toFixed(4)}%
-          </span>
-        </div>
+        {hasFormulaUsageContext ? (
+          <div className="font-mono-tabular text-slate-300 flex items-center gap-2">
+            <span className="text-slate-400">Finished Consumer Product Usage:</span>
+            <span className="px-2 py-0.5 rounded bg-[#111621] border border-slate-700 text-white font-bold">
+              {effectiveCurrentPct.toFixed(4)}%
+            </span>
+          </div>
+        ) : (
+          <div className="text-slate-300 flex flex-wrap items-center gap-2">
+            <span className="text-slate-400">Verification Status:</span>
+            <span className="px-2 py-0.5 rounded bg-[#111621] border border-slate-700 text-slate-200 font-medium">
+              {verificationStatusLabel}
+            </span>
+          </div>
+        )}
 
-        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+        <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1.5">
           <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span>{euRegulationReference} · ScenTree CC BY-NC 4.0</span>
+          <span>{sourceDocument || euRegulationReference}</span>
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
+            >
+              <span>Official Source</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </div>
       </div>
     </div>
   );
 };
+

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "npx --yes tsx --test src/domain/engines.test.ts"
+    "catalog:import": "tsx scripts/import-catalog-v1_1.ts",
+    "test": "npx --yes tsx --test src/domain/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
