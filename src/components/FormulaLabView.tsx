@@ -165,10 +165,10 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     currentVersion?.items || []
   );
   const [lastSyncedVersionId, setLastSyncedVersionId] = useState<string>(
-    `${activeFormula.id}-${currentVersion?.versionLabel}`
+    `${activeFormula.id}-${currentVersion?.versionLabel || 'V1'}`
   );
 
-  const syncKey = `${activeFormula.id}-${currentVersion?.versionLabel}`;
+  const syncKey = `${activeFormula.id}-${currentVersion?.versionLabel || 'V1'}`;
   if (syncKey !== lastSyncedVersionId) {
     setWorkingItems(currentVersion?.items || []);
     setLastSyncedVersionId(syncKey);

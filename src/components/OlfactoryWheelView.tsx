@@ -8,7 +8,7 @@ import {
   RawMaterial,
   SensoryEvaluation,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-wheel-families';
 import {
   Plus,
   Layers,
@@ -25,7 +25,7 @@ import { motion } from 'framer-motion';
 interface OlfactoryWheelViewProps {
   mode: 'wheel' | 'hierarchy';
   formulas: Formula[];
-  activeFormula: Formula;
+  activeFormula?: Formula | null;
   materials: RawMaterial[];
   accords: AccordDefinition[];
   evaluations: SensoryEvaluation[];
@@ -149,7 +149,9 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
   const [editProfileMode, setEditProfileMode] = useState<'target' | 'result'>('target');
   const [suggestionFeedback, setSuggestionFeedback] = useState<string | null>(null);
 
-  const latestEval = evaluations.find((e) => e.formulaId === activeFormula.id) || evaluations[0];
+  const latestEval = activeFormula
+    ? evaluations.find((e) => e.formulaId === activeFormula.id) || evaluations[0]
+    : evaluations[0];
   const [localResultFacets, setLocalResultFacets] = useState<Record<string, number>>(
     latestEval?.evaluatedFacets || {
       Floral: 6,
@@ -180,12 +182,14 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
     ...(customSubFacets[activeFamilyForSubFacets.id] || []),
   ];
 
-  const targetFacets = activeFormula.targetFacets || {};
+  const targetFacets = activeFormula?.targetFacets || {};
 
   const handleScoreChange = (facetName: string, score: number) => {
     if (editProfileMode === 'target') {
       const next = { ...targetFacets, [facetName]: score };
-      onUpdateTargetFacets(activeFormula.id, next);
+      if (activeFormula) {
+        onUpdateTargetFacets(activeFormula.id, next);
+      }
     } else {
       setLocalResultFacets((prev) => ({ ...prev, [facetName]: score }));
     }
@@ -267,6 +271,13 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
 
   // Active formula distribution mapped across the 14 wheel families
   const activeFormulaFamilyWeights = useMemo(() => {
+    if (!activeFormula || !activeFormula.versions || activeFormula.versions.length === 0) {
+      const emptyMap: Record<string, { grams: number; pct: number; count: number }> = {};
+      OLFACTORY_WHEEL_FAMILIES.forEach((fam) => {
+        emptyMap[fam.id] = { grams: 0, pct: 0, count: 0 };
+      });
+      return emptyMap;
+    }
     const currentVersion =
       activeFormula.versions.find(
         (v) => v.versionLabel === activeFormula.activeVersionLabel
@@ -311,6 +322,7 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
     recommendedPctDelta: number,
     familyName: string
   ) => {
+    if (!activeFormula || !activeFormula.versions || activeFormula.versions.length === 0) return;
     const currentVersion =
       activeFormula.versions.find(
         (v) => v.versionLabel === activeFormula.activeVersionLabel
@@ -377,18 +389,20 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
       return { ...prev, [familyName]: step };
     });
 
-    setSuggestionFeedback(
-      `${recommendedPctDelta >= 0 ? 'Added' : 'Reduced'} ${material.name} (${recommendedPctDelta >= 0 ? '+' : ''}${recommendedPctDelta.toFixed(1)}% / ${deltaGrams}g) in ${activeFormula.name} (${activeFormula.activeVersionLabel}) to align ${familyName}.`
-    );
-    setTimeout(() => setSuggestionFeedback(null), 5000);
+    if (activeFormula) {
+      setSuggestionFeedback(
+        `${recommendedPctDelta >= 0 ? 'Added' : 'Reduced'} ${material.name} (${recommendedPctDelta >= 0 ? '+' : ''}${recommendedPctDelta.toFixed(1)}% / ${deltaGrams}g) in ${activeFormula.name} (${activeFormula.activeVersionLabel}) to align ${familyName}.`
+      );
+      setTimeout(() => setSuggestionFeedback(null), 5000);
+    }
   };
 
   // Compute Target vs. Result Distance Diagnostics & Database Material Recommendations
   const gapDiagnostics = useMemo(() => {
     const currentVersion =
-      activeFormula.versions.find(
+      activeFormula?.versions?.find(
         (v) => v.versionLabel === activeFormula.activeVersionLabel
-      ) || activeFormula.versions[0];
+      ) || activeFormula?.versions?.[0];
     const formulaItems = currentVersion?.items || [];
     const formulaMaterialIds = new Set(
       formulaItems.map((i) => i.materialId).filter(Boolean)
@@ -1596,7 +1610,7 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
                   Target Intent vs Smelled Result Calibration
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Calibrate for {activeFormula.name} ({activeFormula.activeVersionLabel})
+                  Calibrate for {activeFormula ? `${activeFormula.name} (${activeFormula.activeVersionLabel})` : 'Target Intent'}
                 </p>
               </div>
               <span className="text-[11px] font-mono-tabular text-emerald-400 font-normal">
@@ -1677,7 +1691,13 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
               Why There Is Distance & How to Close the Gap with Database Materials
             </h2>
             <p className="text-xs text-slate-300 leading-relaxed max-w-4xl">
-              Comparing <strong className="text-white">{activeFormula.name} ({activeFormula.activeVersionLabel})</strong> Target Brief against Smelled Evaluation across all 14 fragrance families. Click any suggested material below to implement it directly into your active formula.
+              {activeFormula ? (
+                <>
+                  Comparing <strong className="text-white">{activeFormula.name} ({activeFormula.activeVersionLabel})</strong> Target Brief against Smelled Evaluation across all 14 fragrance families. Click any suggested material below to implement it directly into your active formula.
+                </>
+              ) : (
+                <>Comparing Target Intent against Smelled Evaluation across all 14 fragrance families.</>
+              )}
             </p>
           </div>
 
@@ -1708,7 +1728,9 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => onSelectFormula(activeFormula.id)}
+              onClick={() => {
+                if (activeFormula) onSelectFormula(activeFormula.id);
+              }}
               className="px-2.5 py-1 rounded bg-emerald-600 text-white font-semibold whitespace-nowrap shrink-0"
             >
               Inspect in Formula Lab →

@@ -160,7 +160,7 @@ export const PYRAMID_TIERS: PyramidTierDef[] = [
 ];
 
 interface OlfactoryPyramidViewProps {
-  activeFormula: Formula;
+  activeFormula?: Formula | null;
   formulas: Formula[];
   materials: RawMaterial[];
   accords: AccordDefinition[];
@@ -191,9 +191,9 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
   const [customItemTiers, setCustomItemTiers] = useState<Record<string, PyramidTierId>>({});
 
   const currentVersion =
-    activeFormula.versions.find(
+    activeFormula?.versions?.find(
       (v) => v.versionLabel === activeFormula.activeVersionLabel
-    ) || activeFormula.versions[0];
+    ) || activeFormula?.versions?.[0] || null;
 
   // Categorize raw materials into the 5 pyramid tiers using v1.1 pyramid metadata + user Shelf override
   const getMaterialPyramidTier = (mat: RawMaterial): PyramidTierId => {
@@ -579,7 +579,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
     ctx.fillStyle = '#F8FAFC';
     ctx.font = 'bold 44px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText(
-      `${activeFormula.name} (${currentVersion?.versionLabel || 'V1'}) — Olfactory Pyramid`,
+      `${activeFormula?.name || 'Formula'} (${currentVersion?.versionLabel || 'V1'}) — Olfactory Pyramid`,
       84,
       158
     );
@@ -587,7 +587,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
     ctx.fillStyle = '#94A3B8';
     ctx.font = '400 22px sans-serif';
     ctx.fillText(
-      `Product: ${activeFormula.intendedProduct} · IFRA: ${activeFormula.ifraCategory} · Total Batch Weight: ${formulaTierBreakdown.totalWeight.toFixed(2)} g`,
+      `Product: ${activeFormula?.intendedProduct || 'Fine Fragrance'} · IFRA: ${activeFormula?.ifraCategory || 'Category 4'} · Total Batch Weight: ${formulaTierBreakdown.totalWeight.toFixed(2)} g`,
       84,
       198
     );
@@ -806,7 +806,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
     // Trigger PNG Download
     const dataUrl = canvas.toDataURL('image/png');
     const link = document.createElement('a');
-    const safeName = activeFormula.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const safeName = (activeFormula?.name || 'formula').replace(/[^a-z0-9]/gi, '-').toLowerCase();
     link.download = `osmolab-pyramid-${safeName}-${currentVersion?.versionLabel || 'v1'}.png`;
     link.href = dataUrl;
     document.body.appendChild(link);
@@ -951,7 +951,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-white flex items-center gap-1.5">
                     <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
-                    {t('fromCurrentFormulaSection', lang)} ({activeFormula.name})
+                    {t('fromCurrentFormulaSection', lang)} ({activeFormula?.name || 'Formula'})
                   </span>
                   <span className="text-[11px] text-slate-400">
                     {(currentVersion?.items || []).length} {lang === 'fa' ? 'ماده' : 'items'}
@@ -1082,7 +1082,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
           <div className="text-xs text-slate-400 bg-[#0B0E14] border border-slate-800/80 rounded-md px-3.5 py-1.5 flex items-center justify-between sm:justify-start gap-2 font-normal">
             <span>{t('activeStudy', lang)}:</span>
             <span className="text-white font-medium truncate">
-              {activeFormula.name} ({currentVersion?.versionLabel})
+              {activeFormula ? `${activeFormula.name} (${currentVersion?.versionLabel || 'V1'})` : 'No Active Formula'}
             </span>
           </div>
           <div className="grid grid-cols-2 sm:flex items-center gap-2.5">

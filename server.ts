@@ -26,9 +26,16 @@ import {
   updateUserSettingsInDb,
   deleteAccountDataInDb,
   getUserShelf,
+  getUserShelfWithMaterials,
   addToUserShelf,
   updateUserShelfItem,
   removeFromUserShelf,
+  listFormulasForUser,
+  getFormulaForUser,
+  listAccordsForUser,
+  listEvaluationsForUser,
+  listExperimentsForUser,
+  listScentMemoriesForUser,
 } from './src/db/workspace-repo.ts';
 import {
   formatStandardizedApiError,
@@ -233,12 +240,8 @@ async function startServer() {
   app.get('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const shelf = await getUserShelf(uid);
-      res.json({
-        shelf,
-        shelfCount: shelf.length,
-        workbenchCount: shelf.filter((item) => item.isOnWorkbench).length,
-      });
+      const data = await getUserShelfWithMaterials(uid);
+      res.json(data);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load user shelf');
     }
@@ -254,8 +257,7 @@ async function startServer() {
       );
       const validated = validateShelfMutationPayload(req.body || {});
       const item = await addToUserShelf(uid, materialId, validated);
-      const shelf = await getUserShelf(uid);
-      res.json({ item, shelf });
+      res.json({ item });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
     }
@@ -274,11 +276,7 @@ async function startServer() {
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await addToUserShelf(uid, materialId, validated);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ item, shelf: workspace.userShelf, workspace });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
       }
@@ -298,11 +296,7 @@ async function startServer() {
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await updateUserShelfItem(uid, materialId, validated);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ item, shelf: workspace.userShelf, workspace });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update My Shelf item');
       }
@@ -329,8 +323,7 @@ async function startServer() {
           materialId,
           isOnWorkbench
         );
-        const shelf = await getUserShelf(uid);
-        res.json({ item, shelf });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update Workbench pin');
       }
@@ -348,11 +341,7 @@ async function startServer() {
           'materialId'
         );
         const result = await removeFromUserShelf(uid, materialId);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ ...result, shelf: workspace.userShelf, workspace });
+        res.json(result);
       } catch (error: unknown) {
         sendSafeRouteError(
           res,
@@ -369,15 +358,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateCreateMaterialPayload(req.body);
-      await createMaterialInDb(
+      const created = await createMaterialInDb(
         uid,
         validated as Parameters<typeof createMaterialInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ material: created });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to create material');
     }
@@ -387,8 +372,8 @@ async function startServer() {
   app.get('/api/formulas', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ formulas: ws.formulas, total: ws.formulas.length });
+      const formulas = await listFormulasForUser(uid);
+      res.json({ formulas, total: formulas.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load formulas');
     }
@@ -404,11 +389,7 @@ async function startServer() {
           req.params.formulaId,
           'formulaId'
         );
-        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-        const formula = ws.formulas.find((f) => f.id === formulaId);
-        if (!formula) {
-          throw new Error(`NotFound: Formula #${formulaId} not found.`);
-        }
+        const formula = await getFormulaForUser(uid, formulaId);
         res.json({ formula });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to load formula');
@@ -426,11 +407,7 @@ async function startServer() {
           req.params.formulaId,
           'formulaId'
         );
-        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-        const formula = ws.formulas.find((f) => f.id === formulaId);
-        if (!formula) {
-          throw new Error(`NotFound: Formula #${formulaId} not found.`);
-        }
+        const formula = await getFormulaForUser(uid, formulaId);
         res.json({
           formulaId: formula.id,
           activeVersionLabel: formula.activeVersionLabel,
@@ -452,16 +429,12 @@ async function startServer() {
       const { formula, version } = validateSaveFormulaPayload(req.body);
       assertStrictTenantPayload(formula, uid);
       assertStrictTenantPayload(version, uid);
-      await saveFormulaAndVersionInDb(
+      const result = await saveFormulaAndVersionInDb(
         uid,
         formula as Parameters<typeof saveFormulaAndVersionInDb>[1],
         version as Parameters<typeof saveFormulaAndVersionInDb>[2]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json(result);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save formula version');
     }
@@ -474,13 +447,10 @@ async function startServer() {
   app.get('/api/experiments', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
-        : null;
-      const items = formulaIdParam
-        ? ws.experiments.filter((e) => e.formulaId === formulaIdParam)
-        : ws.experiments;
+        : undefined;
+      const items = await listExperimentsForUser(uid, formulaIdParam);
       res.json({ experiments: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load experiments');
@@ -492,15 +462,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateExperimentPayload(req.body);
-      await addExperimentEntryInDb(
+      const created = await addExperimentEntryInDb(
         uid,
         validated as Parameters<typeof addExperimentEntryInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ experiment: created });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add experiment entry');
     }
@@ -510,13 +476,10 @@ async function startServer() {
   app.get('/api/evaluations', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
-        : null;
-      const items = formulaIdParam
-        ? ws.evaluations.filter((e) => e.formulaId === formulaIdParam)
-        : ws.evaluations;
+        : undefined;
+      const items = await listEvaluationsForUser(uid, formulaIdParam);
       res.json({ evaluations: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load evaluations');
@@ -528,15 +491,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateEvaluationPayload(req.body);
-      await addEvaluationInDb(
+      const created = await addEvaluationInDb(
         uid,
         validated as Parameters<typeof addEvaluationInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ evaluation: created });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save sensory evaluation');
     }
@@ -546,13 +505,10 @@ async function startServer() {
   app.get('/api/memories', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const materialIdParam = req.query.materialId
         ? validatePositiveIntId(req.query.materialId, 'materialId')
-        : null;
-      const items = materialIdParam
-        ? ws.scentMemories.filter((m) => m.materialId === materialIdParam)
-        : ws.scentMemories;
+        : undefined;
+      const items = await listScentMemoriesForUser(uid, materialIdParam);
       res.json({ scentMemories: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load scent memories');
@@ -564,15 +520,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateScentMemoryPayload(req.body);
-      await upsertScentMemoryInDb(
+      const result = await upsertScentMemoryInDb(
         uid,
         validated as Parameters<typeof upsertScentMemoryInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json(result);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update scent memory');
     }
@@ -582,8 +534,8 @@ async function startServer() {
   app.get('/api/accords', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ accords: ws.accords, total: ws.accords.length });
+      const accords = await listAccordsForUser(uid);
+      res.json({ accords, total: accords.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load accords');
     }
@@ -594,15 +546,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateAccordPayload(req.body);
-      await createAccordInDb(
+      const created = await createAccordInDb(
         uid,
         validated as Parameters<typeof createAccordInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ accord: created });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save accord');
     }
@@ -620,16 +568,12 @@ async function startServer() {
           'accordId'
         );
         const validated = validateAccordPayload(req.body);
-        await updateAccordAndCreateVersion(
+        const updatedAccord = await updateAccordAndCreateVersion(
           uid,
           accordId,
           validated as Parameters<typeof updateAccordAndCreateVersion>[2]
         );
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json(workspace);
+        res.json({ accord: updatedAccord });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to create accord version');
       }
@@ -641,12 +585,8 @@ async function startServer() {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await updateUserSettingsInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      const updatedUser = await updateUserSettingsInDb(uid, req.body);
+      res.json({ user: updatedUser });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update settings');
     }
