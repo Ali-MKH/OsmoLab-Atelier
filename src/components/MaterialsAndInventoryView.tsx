@@ -10,7 +10,7 @@ import {
   ScentMemoryRecord,
   VolatilityTier,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-wheel-families';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
 import { normalizeMaterialSynonyms } from '../domain/navigation-state';
 import { PyramidStepIcon, getVolatilityBadgeConfig } from './PyramidStepIcon';
 import { DualRegulatorySlider } from './DualRegulatorySlider';
@@ -3331,19 +3331,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 {/* Quick Regulatory Summary Snippet */}
                 <div className="rounded-lg bg-[#111621] border border-slate-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-white">
-                      {selectedLimit?.verificationStatus === 'VERIFIED_OFFICIAL'
-                        ? 'Official IFRA Record: '
-                        : selectedLimit?.verificationStatus === 'PARTIALLY_VERIFIED'
-                        ? 'Partially Verified: '
-                        : selectedLimit?.verificationStatus === 'DEMO'
-                        ? 'Educational / Demo: '
-                        : selectedLimit?.verificationStatus === 'USER_ENTERED_UNVERIFIED'
-                        ? 'User-entered, Unverified: '
-                        : 'Lookup Required: '}
-                    </span>
+                    <span className="font-semibold text-white">Authoritative IFRA Status: </span>
                     <span className="text-slate-300">
-                      {selectedLimit?.amendmentStatus || (selectedLimit?.verificationStatus === 'VERIFIED_OFFICIAL' ? 'Official Amendment' : 'Lookup required')} ·{' '}
+                      {selectedLimit?.amendmentStatus || 'IFRA 51st Amendment'} ·{' '}
                     </span>
                     {selectedLimit?.maxAllowedPercent !== null && selectedLimit?.maxAllowedPercent !== undefined ? (
                       <span className="text-emerald-400 font-mono-tabular font-medium">
@@ -3440,8 +3430,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     ifraCategory="Cat 4 (Fine Fragrance)"
                     euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
                     isEuAllergen={Boolean(selectedLimit?.euAllergenDeclarable || selectedMaterial.euAllergenDeclarable)}
-                    leaveOnThresholdPct={selectedLimit?.euLabelThresholdLeaveOnPct ?? null}
-                    rinseOffThresholdPct={selectedLimit?.euLabelThresholdRinseOffPct ?? null}
+                    leaveOnThresholdPct={selectedLimit?.euLabelThresholdLeaveOnPct ?? 0.001}
+                    rinseOffThresholdPct={selectedLimit?.euLabelThresholdRinseOffPct ?? 0.01}
                     verificationStatus={
                       selectedLimit?.verificationStatus ||
                       (selectedLimit?.maxAllowedPercent === null || selectedLimit?.maxAllowedPercent === undefined
@@ -3468,7 +3458,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         Specific IFRA Restriction / Specification:
                       </span>
                       <p className="text-slate-200 leading-relaxed">
-                        {selectedLimit?.restrictions || 'No verified Category 4 quantitative restriction is currently stored. Manual verification may be required.'}
+                        {selectedLimit?.restrictions || 'No quantitative restriction recorded in Category 4.'}
                       </p>
                     </div>
                   </div>

@@ -168,13 +168,13 @@ export function validateCatalogQuery(
   const hasExplicitPagination =
     query.limit !== undefined || query.offset !== undefined;
 
-  let limit = 50;
+  let limit = 1000;
   if (query.limit !== undefined && query.limit !== '') {
     const parsedLimit = Number(query.limit);
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 1000) {
       details.push({
         field: 'limit',
-        message: 'limit must be an integer between 1 and 100.',
+        message: 'limit must be an integer between 1 and 1000.',
         code: 'OUT_OF_RANGE',
       });
     } else {
