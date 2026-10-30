@@ -256,7 +256,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   );
   const [finalConc, setFinalConc] = useState<number | null>(
     typeof activeFormula?.finalProductConcentration === 'number' &&
-      activeFormula.finalProductConcentration > 0
+      activeFormula.finalProductConcentration >= 0.1 &&
+      activeFormula.finalProductConcentration <= 100
       ? activeFormula.finalProductConcentration
       : null
   );
@@ -290,7 +291,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     setFormulaStatus(activeFormula?.status || 'Draft');
     setFinalConc(
       typeof activeFormula?.finalProductConcentration === 'number' &&
-        activeFormula.finalProductConcentration > 0
+        activeFormula.finalProductConcentration >= 0.1 &&
+        activeFormula.finalProductConcentration <= 100
         ? activeFormula.finalProductConcentration
         : null
     );
@@ -706,11 +708,11 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
       !trimmedCategory ||
       newFormulaFinalConc.trim() === '' ||
       !Number.isFinite(parsedConc) ||
-      parsedConc <= 0 ||
+      parsedConc < 0.1 ||
       parsedConc > 100
     ) {
       setNewFormulaError(
-        'Formula Name, Intended Product, IFRA Category, and a valid Finished-Product Concentration (0–100%) are required.'
+        'Formula Name, Intended Product, IFRA Category, and a valid Finished-Product Concentration (0.1–100%) are required.'
       );
       return;
     }
@@ -836,13 +838,13 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                 id="new-formula-conc"
                 data-testid="new-formula-conc-input"
                 type="number"
-                min={0.01}
+                min={0.1}
                 max={100}
                 step="any"
                 required
                 value={newFormulaFinalConc}
                 onChange={(e) => setNewFormulaFinalConc(e.target.value)}
-                placeholder="Enter % (0.01–100)"
+                placeholder="Enter % (0.1–100)"
                 className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs font-mono-tabular text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -2298,7 +2300,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     id="safety-monitor-final-conc"
                     data-testid="safety-monitor-conc-input"
                     type="number"
-                    min={0.01}
+                    min={0.1}
                     max={100}
                     step="any"
                     placeholder="—"
@@ -2311,7 +2313,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                       }
                       const num = Number(raw);
                       setFinalConc(
-                        Number.isFinite(num) && num > 0 ? Math.min(100, num) : null
+                        Number.isFinite(num) && num >= 0.1 ? Math.min(100, num) : null
                       );
                     }}
                     className="w-14 bg-[#111621] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono-tabular text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -3250,7 +3252,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                 <label className="text-slate-400">Finished Product Conc %:</label>
                 <input
                   type="number"
-                  min={0.01}
+                  min={0.1}
                   max={100}
                   step="any"
                   placeholder="—"
@@ -3263,7 +3265,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     }
                     const num = Number(raw);
                     setFinalConc(
-                      Number.isFinite(num) && num > 0 ? Math.min(100, num) : null
+                      Number.isFinite(num) && num >= 0.1 ? Math.min(100, num) : null
                     );
                   }}
                   className="w-16 bg-[#111621] border border-slate-800 rounded px-2 py-1 font-mono-tabular text-white text-right"

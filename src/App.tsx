@@ -1317,7 +1317,7 @@ export default function App() {
           !trimmedCategory ||
           typeof parsedConc !== 'number' ||
           !Number.isFinite(parsedConc) ||
-          parsedConc <= 0 ||
+          parsedConc < 0.1 ||
           parsedConc > 100
         ) {
           return prev;

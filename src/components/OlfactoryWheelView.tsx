@@ -620,11 +620,11 @@ export const OlfactoryWheelView: React.FC<OlfactoryWheelViewProps> = ({
               </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Column 1: 17 Olfactory Families Grouped by Super-Family */}
+          {/* Column 1: 14 Olfactory Families Grouped by Super-Family */}
           <div className="lg:col-span-3 rounded-lg bg-[#111621] border border-slate-800 p-4">
             <h2 className="text-xs font-semibold text-slate-300 mb-3 flex items-center justify-between">
               <span>01. Standard Families</span>
-              <span className="font-mono-tabular text-slate-400">17 Categories</span>
+              <span className="font-mono-tabular text-slate-400">{OLFACTORY_WHEEL_FAMILIES.length} Categories</span>
             </h2>
             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
               {MACRO_GROUPS.map((mg) => {
