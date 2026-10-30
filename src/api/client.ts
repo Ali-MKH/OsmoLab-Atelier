@@ -1,60 +1,45 @@
-import {
+import type {
   AccordDefinition,
   ExperimentEntry,
   Formula,
-  FormulaLineItem,
-  FormulaVersion,
   MaterialConstituent,
   MaterialRegulatoryLimit,
   MaterialRegulatoryRecord,
+  MaterialUsageReview,
+  PyramidUiCode,
   RawMaterial,
+  RegulatoryAuthority,
+  RegulatoryRuleType,
   RegulatoryVerificationStatus,
   ScentMemoryRecord,
   SensoryEvaluation,
+  ShelfMutationPayload,
   UserShelfItem,
 } from '../domain/types';
 
-export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
-
-export interface CatalogQueryOptions {
-  q?: string;
-  family?: string;
-  origin?: string;
-  pyramidCode?: string;
-  limit?: number;
-  offset?: number;
-  signal?: AbortSignal;
-}
-
-export interface CatalogListResponse {
-  items?: RawMaterial[];
-  materials: RawMaterial[];
-  regulatoryLimits: MaterialRegulatoryLimit[];
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-}
-
-export interface MaterialRegulatoryDossierDto {
+export interface MaterialRegulatoryDossier {
   materialId: number;
-  materialName: string;
-  casNumber: string;
-  verificationStatus: RegulatoryVerificationStatus;
   regulatoryLimit: MaterialRegulatoryLimit | null;
   regulatoryRecords: MaterialRegulatoryRecord[];
   constituents: MaterialConstituent[];
 }
 
+export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+export interface StandardizedClientError extends Error {
+  statusCode: number;
+  code: string;
+  details: Array<{ field: string; message: string; code: string }>;
+}
+
 export interface BootstrapResponse {
-  user: {
-    uid: string;
-    email: string;
-    displayName: string;
-    theme: string;
-    educationalPrompts: boolean;
-    safetyEnabled: boolean;
-  };
+  status: string;
+  persistenceMode: 'postgres' | 'memory';
+  databaseReady: boolean;
+  catalogReady: boolean;
+  catalogCount: number;
+  catalogVersion: string;
+  user: { uid: string; email: string } | null;
   counts: {
     catalog: number;
     shelf: number;
@@ -65,313 +50,408 @@ export interface BootstrapResponse {
     experiments: number;
     scentMemories: number;
   };
-  activeFormulaId: number | null;
-  activeVersionLabel: string | null;
 }
 
-export async function fetchHealthDataApi(): Promise<{
-  persistenceMode: 'postgres' | 'memory';
-  databaseReady: boolean;
-  catalogReady: boolean;
-  catalogCount: number;
-  catalogVersion: string;
-}> {
-  const res = await fetch('/api/health/data');
-  if (!res.ok) {
-    throw new Error(`Health check failed: ${res.status}`);
+export interface CatalogQueryParams {
+  q?: string;
+  search?: string;
+  family?: string;
+  origin?: string;
+  noteRole?: string;
+  pyramidCode?: PyramidUiCode | 'ALL' | '';
+  shelfOnly?: boolean;
+  workbenchOnly?: boolean;
+  includeRegulatory?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CatalogListResponse {
+  items: RawMaterial[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  regulatoryLimits?: MaterialRegulatoryLimit[];
+}
+
+export interface MaterialDetailResponse {
+  material: RawMaterial;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  usageReviews: MaterialUsageReview[];
+}
+
+export interface UserShelfResponse {
+  shelf: UserShelfItem[];
+  shelfCount: number;
+  workbenchCount: number;
+}
+
+export interface UpsertShelfItemResponse {
+  item: UserShelfItem;
+  shelf: UserShelfItem[];
+}
+
+export interface RemoveShelfItemResponse {
+  removed: boolean;
+  materialId: number;
+  shelf: UserShelfItem[];
+}
+
+export interface FormulasListResponse {
+  formulas: Formula[];
+  total: number;
+}
+
+export interface FormulaDetailResponse {
+  formula: Formula;
+}
+
+export interface SaveFormulaResponse {
+  formulaId: number;
+  formulaVersionId: number;
+  formula: Formula | null;
+}
+
+export interface AccordsListResponse {
+  accords: AccordDefinition[];
+  total: number;
+}
+
+export interface CreateAccordResponse {
+  accord: AccordDefinition;
+}
+
+export interface CreateMaterialResponse {
+  material: RawMaterial;
+}
+
+export interface ExperimentsListResponse {
+  experiments: ExperimentEntry[];
+  total: number;
+}
+
+export interface CreateExperimentResponse {
+  experiment: ExperimentEntry;
+}
+
+export interface EvaluationsListResponse {
+  evaluations: SensoryEvaluation[];
+  total: number;
+}
+
+export interface CreateEvaluationResponse {
+  evaluation: SensoryEvaluation;
+}
+
+export interface ScentMemoriesListResponse {
+  scentMemories: ScentMemoryRecord[];
+  total: number;
+}
+
+export interface SaveScentMemoryResponse {
+  scentMemory: ScentMemoryRecord;
+}
+
+async function parseJsonResponse<T>(res: Response): Promise<T> {
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await res.json()) as Record<string, unknown>;
+  } catch {
+    body = {};
   }
-  return res.json();
+
+  if (!res.ok) {
+    const err = new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Request failed with status ${res.status}`
+    ) as StandardizedClientError;
+    err.statusCode = res.status;
+    err.code = typeof body.code === 'string' ? body.code : 'HTTP_ERROR';
+    err.details = Array.isArray(body.details)
+      ? (body.details as Array<{ field: string; message: string; code: string }>)
+      : [];
+    throw err;
+  }
+
+  return body as T;
+}
+
+export async function fetchBootstrapApi(
+  headers: Record<string, string>
+): Promise<BootstrapResponse> {
+  const res = await fetch('/api/bootstrap', { headers });
+  return parseJsonResponse<BootstrapResponse>(res);
 }
 
 export async function fetchCatalogApi(
-  options: CatalogQueryOptions = {},
-  headers: Record<string, string> = {}
+  params: CatalogQueryParams = {},
+  headers: Record<string, string> = {},
+  signal?: AbortSignal
 ): Promise<CatalogListResponse> {
-  const params = new URLSearchParams();
-  if (options.q) params.set('q', options.q);
-  if (options.family && options.family !== 'All') params.set('family', options.family);
-  if (options.origin && options.origin !== 'All') params.set('origin', options.origin);
-  if (options.pyramidCode && options.pyramidCode !== 'All') {
-    params.set('pyramidCode', options.pyramidCode);
+  const query = new URLSearchParams();
+  const qVal = (params.q ?? params.search ?? '').trim();
+  if (qVal) query.set('q', qVal);
+  if (params.family && params.family !== 'All') query.set('family', params.family);
+  if (params.origin && params.origin !== 'All') query.set('origin', params.origin);
+  if (params.noteRole && params.noteRole !== 'All') query.set('noteRole', params.noteRole);
+  if (params.pyramidCode && params.pyramidCode !== 'ALL') {
+    query.set('pyramidCode', params.pyramidCode);
   }
-  if (options.limit !== undefined) params.set('limit', String(options.limit));
-  if (options.offset !== undefined) params.set('offset', String(options.offset));
+  if (params.shelfOnly) query.set('shelfOnly', 'true');
+  if (params.workbenchOnly) query.set('workbenchOnly', 'true');
+  if (params.includeRegulatory) query.set('includeRegulatory', 'true');
+  query.set('limit', String(params.limit ?? 50));
+  query.set('offset', String(params.offset ?? 0));
 
-  const qs = params.toString();
+  const qs = query.toString();
   const res = await fetch(`/api/catalog${qs ? `?${qs}` : ''}`, {
     headers,
-    signal: options.signal,
+    signal,
   });
-  if (!res.ok) {
-    let errBody: { error?: string; message?: string } = {};
-    try {
-      errBody = await res.json();
-    } catch {
-      // ignore JSON parse failure
-    }
-    throw new Error(
-      errBody.message || errBody.error || `Failed to fetch catalog: ${res.status}`
-    );
-  }
-  return res.json();
+  return parseJsonResponse<CatalogListResponse>(res);
 }
 
-export async function fetchCatalogMaterialDetailApi(
+export async function fetchMaterialDetailApi(
   materialId: number,
   headers: Record<string, string> = {}
-): Promise<{
-  material: RawMaterial;
-  regulatoryLimit: MaterialRegulatoryLimit | null;
-}> {
+): Promise<MaterialDetailResponse> {
   const res = await fetch(`/api/catalog/${materialId}`, { headers });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch material ${materialId}: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<MaterialDetailResponse>(res);
 }
 
 export async function fetchMaterialRegulatoryDossierApi(
   materialId: number,
   headers: Record<string, string> = {}
-): Promise<MaterialRegulatoryDossierDto> {
+): Promise<MaterialRegulatoryDossier> {
   const res = await fetch(`/api/catalog/${materialId}/regulatory`, { headers });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch regulatory dossier for ${materialId}: ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function fetchBootstrapApi(
-  headers: Record<string, string> = {}
-): Promise<BootstrapResponse> {
-  const res = await fetch('/api/bootstrap', { headers });
-  if (!res.ok) {
-    throw new Error(`Bootstrap failed: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<MaterialRegulatoryDossier>(res);
 }
 
 export async function fetchUserShelfApi(
-  headers: Record<string, string> = {},
-  workbenchOnly = false
-): Promise<{
-  userShelf: UserShelfItem[];
-  materials: RawMaterial[];
-  regulatoryLimits: MaterialRegulatoryLimit[];
-  total: number;
-}> {
-  const res = await fetch(
-    `/api/shelf${workbenchOnly ? '?workbenchOnly=true' : ''}`,
-    { headers }
-  );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch shelf: ${res.status}`);
-  }
-  return res.json();
+  headers: Record<string, string>
+): Promise<UserShelfResponse> {
+  const res = await fetch('/api/shelf', { headers });
+  return parseJsonResponse<UserShelfResponse>(res);
 }
 
-export async function upsertShelfItemApi(
+export async function upsertUserShelfItemApi(
   materialId: number,
-  payload: {
-    supplierName?: string | null;
-    supplierProductName?: string | null;
-    workingDilutionPct?: number | null;
-    solvent?: string | null;
-    personalNotes?: string | null;
-    isOnWorkbench?: boolean;
-    pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
-    favorite?: boolean;
-  },
-  headers: Record<string, string> = {}
-): Promise<{ ok: boolean; shelfItem: UserShelfItem | null }> {
+  payload: ShelfMutationPayload,
+  headers: Record<string, string>
+): Promise<UpsertShelfItemResponse> {
   const res = await fetch(`/api/shelf/${materialId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to upsert shelf item ${materialId}: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<UpsertShelfItemResponse>(res);
 }
 
-export async function removeShelfItemApi(
+export async function updateUserShelfItemApi(
   materialId: number,
-  headers: Record<string, string> = {}
-): Promise<{ ok: boolean; materialId: number }> {
+  payload: ShelfMutationPayload,
+  headers: Record<string, string>
+): Promise<UpsertShelfItemResponse> {
+  const res = await fetch(`/api/shelf/${materialId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<UpsertShelfItemResponse>(res);
+}
+
+export async function removeUserShelfItemApi(
+  materialId: number,
+  headers: Record<string, string>
+): Promise<RemoveShelfItemResponse> {
   const res = await fetch(`/api/shelf/${materialId}`, {
     method: 'DELETE',
     headers,
   });
-  if (!res.ok) {
-    throw new Error(`Failed to remove shelf item ${materialId}: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<RemoveShelfItemResponse>(res);
 }
 
 export async function loadStarterOrganApi(
-  headers: Record<string, string> = {}
-): Promise<{
-  ok: boolean;
-  addedCount: number;
-  userShelf: UserShelfItem[];
-  materials: RawMaterial[];
-  regulatoryLimits: MaterialRegulatoryLimit[];
-  total: number;
-}> {
+  headers: Record<string, string>
+): Promise<{ addedCount: number; shelf: UserShelfItem[]; shelfCount: number }> {
   const res = await fetch('/api/shelf/starter-organ', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
   });
-  if (!res.ok) {
-    throw new Error(`Failed to load starter organ: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<{
+    addedCount: number;
+    shelf: UserShelfItem[];
+    shelfCount: number;
+  }>(res);
 }
 
-export async function fetchFormulasApi(
-  headers: Record<string, string> = {}
-): Promise<{ formulas: Formula[]; total: number }> {
+export async function fetchFormulasListApi(
+  headers: Record<string, string>
+): Promise<FormulasListResponse> {
   const res = await fetch('/api/formulas', { headers });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch formulas: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<FormulasListResponse>(res);
 }
 
 export async function fetchFormulaDetailApi(
   formulaId: number,
-  headers: Record<string, string> = {}
-): Promise<{
-  formula: Formula;
-  versions: FormulaVersion[];
-  evaluations: SensoryEvaluation[];
-  experiments: ExperimentEntry[];
-}> {
+  headers: Record<string, string>
+): Promise<FormulaDetailResponse> {
   const res = await fetch(`/api/formulas/${formulaId}`, { headers });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch formula ${formulaId}: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<FormulaDetailResponse>(res);
 }
 
 export async function saveFormulaVersionApi(
-  formulaPayload: Partial<Formula> & { id?: number; name: string },
-  versionPayload: {
-    versionLabel: string;
-    parentVersionId?: number | null;
-    status: 'Draft' | 'Committed';
-    versionNotes: string;
-    maturationDays: number;
-    items: FormulaLineItem[];
+  payload: {
+    formula: Record<string, unknown>;
+    version: Record<string, unknown>;
   },
-  headers: Record<string, string> = {}
-): Promise<{
-  formulaId: number;
-  formulaVersionId: number;
-  formula: Formula;
-  version: FormulaVersion;
-}> {
+  headers: Record<string, string>
+): Promise<SaveFormulaResponse> {
   const res = await fetch('/api/formulas/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ formula: formulaPayload, version: versionPayload }),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to save formula version: ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function fetchAccordsApi(
-  headers: Record<string, string> = {}
-): Promise<{ accords: AccordDefinition[]; total: number }> {
-  const res = await fetch('/api/accords', { headers });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch accords: ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function createMaterialApi(
-  payload: Omit<RawMaterial, 'id'> & {
-    maxAllowedPercent?: number | null;
-    ifraSource?: string;
-  },
-  headers: Record<string, string> = {}
-): Promise<{
-  materialId: number;
-  material: RawMaterial;
-  regulatoryLimit: MaterialRegulatoryLimit | null;
-  shelfItem: UserShelfItem | null;
-}> {
-  const res = await fetch('/api/materials', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to create material: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<SaveFormulaResponse>(res);
+}
+
+export async function fetchAccordsApi(
+  headers: Record<string, string>
+): Promise<AccordsListResponse> {
+  const res = await fetch('/api/accords', { headers });
+  return parseJsonResponse<AccordsListResponse>(res);
 }
 
 export async function createAccordApi(
-  payload: Omit<AccordDefinition, 'id'>,
-  headers: Record<string, string> = {}
-): Promise<{ accordId: number; accord: AccordDefinition }> {
+  payload: Partial<AccordDefinition>,
+  headers: Record<string, string>
+): Promise<CreateAccordResponse> {
   const res = await fetch('/api/accords', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to create accord: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<CreateAccordResponse>(res);
 }
 
-export async function addExperimentApi(
+export async function updateAccordApi(
+  accordId: number,
+  payload: Record<string, unknown>,
+  headers: Record<string, string>
+): Promise<CreateAccordResponse> {
+  const res = await fetch(`/api/accords/${accordId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<CreateAccordResponse>(res);
+}
+
+export async function createCustomMaterialApi(
+  payload: Partial<RawMaterial> & { maxAllowedPercent?: number | null },
+  headers: Record<string, string>
+): Promise<CreateMaterialResponse> {
+  const res = await fetch('/api/materials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<CreateMaterialResponse>(res);
+}
+
+export async function fetchExperimentsApi(
+  headers: Record<string, string>
+): Promise<ExperimentsListResponse> {
+  const res = await fetch('/api/experiments', { headers });
+  return parseJsonResponse<ExperimentsListResponse>(res);
+}
+
+export async function createExperimentApi(
   payload: Omit<ExperimentEntry, 'id'>,
-  headers: Record<string, string> = {}
-): Promise<{ experiment: ExperimentEntry }> {
+  headers: Record<string, string>
+): Promise<CreateExperimentResponse> {
   const res = await fetch('/api/experiments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to add experiment: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<CreateExperimentResponse>(res);
 }
 
-export async function addEvaluationApi(
-  payload: Omit<SensoryEvaluation, 'id' | 'createdAt'>,
-  headers: Record<string, string> = {}
-): Promise<{ evaluation: SensoryEvaluation }> {
+export async function fetchEvaluationsApi(
+  headers: Record<string, string>
+): Promise<EvaluationsListResponse> {
+  const res = await fetch('/api/evaluations', { headers });
+  return parseJsonResponse<EvaluationsListResponse>(res);
+}
+
+export async function createEvaluationApi(
+  payload: Omit<SensoryEvaluation, 'id' | 'createdAt'> & { createdAt?: string },
+  headers: Record<string, string>
+): Promise<CreateEvaluationResponse> {
   const res = await fetch('/api/evaluations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to add evaluation: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<CreateEvaluationResponse>(res);
 }
 
-export async function upsertScentMemoryApi(
-  payload: Omit<ScentMemoryRecord, 'id' | 'lastReviewedAt'>,
-  headers: Record<string, string> = {}
-): Promise<{ scentMemory: ScentMemoryRecord }> {
+export async function fetchScentMemoriesApi(
+  headers: Record<string, string>
+): Promise<ScentMemoriesListResponse> {
+  const res = await fetch('/api/memories', { headers });
+  return parseJsonResponse<ScentMemoriesListResponse>(res);
+}
+
+export async function saveScentMemoryApi(
+  payload: Omit<ScentMemoryRecord, 'id' | 'lastReviewedAt'> & {
+    lastReviewedAt?: string;
+  },
+  headers: Record<string, string>
+): Promise<SaveScentMemoryResponse> {
   const res = await fetch('/api/memories', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to save scent memory: ${res.status}`);
-  }
-  return res.json();
+  return parseJsonResponse<SaveScentMemoryResponse>(res);
 }
+
+export async function upsertUserRegulatoryRecordApi(
+  payload: {
+    materialId: number;
+    authority: RegulatoryAuthority;
+    ruleType: RegulatoryRuleType;
+    status?: string;
+    standardOrAnnex?: string;
+    referenceNumber?: string;
+    productCategory?: string | null;
+    maxFinishedProductPct?: number | null;
+    maxReadyForUsePct?: number | null;
+    labelThresholdLeaveOnPct?: number | null;
+    labelThresholdRinseOffPct?: number | null;
+    conditionText?: string;
+    summary?: string;
+    sourceUrl?: string;
+    sourceDocument?: string;
+    sourceVersion?: string;
+    verificationStatus?: RegulatoryVerificationStatus;
+  },
+  headers: Record<string, string>
+): Promise<{ status: string; record: unknown }> {
+  const res = await fetch('/api/regulatory-records', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<{ status: string; record: unknown }>(res);
+}
+
+export const fetchCatalogPageApi = fetchCatalogApi;
+export const upsertShelfItemApi = upsertUserShelfItemApi;
+export const removeShelfItemApi = removeUserShelfItemApi;
+export const createMaterialApi = createCustomMaterialApi;
+

@@ -1,148 +1,163 @@
 import React, { useEffect, useState } from 'react';
+import { ExternalLink, FileCheck2, HelpCircle, ShieldCheck } from 'lucide-react';
 import {
-   fetchMaterialRegulatoryDossierApi,
-  type MaterialRegulatoryDossierDto,
+  fetchMaterialRegulatoryDossierApi,
+  type MaterialRegulatoryDossier,
 } from '../../api/client';
 import { RegulatoryBadge } from './RegulatoryBadge';
-import { FileText, ShieldCheck } from 'lucide-react';
 
-interface RegulatoryDossierProps {
+export interface RegulatoryDossierProps {
   materialId: number;
-  materialName: string;
+  getAuthHeaders?: () => Promise<Record<string, string>>;
+  initialDossier?: MaterialRegulatoryDossier | null;
 }
 
 /**
- * Fetches `/api/catalog/:materialId/regulatory` on demand so the main catalog list
- * stays lightweight while the Regulatory sub-view displays full IFRA / EU records
- * and constituent allergen declarations.
+ * Lazy-loaded Regulatory Dossier panel:
+ * Fetches `/api/catalog/:id/regulatory` only when opened or rendered for a selected material,
+ * keeping default catalog list queries lightweight.
+ * Never fabricates regulatory facts — missing evidence is explicitly surfaced as LOOKUP_REQUIRED.
  */
 export const RegulatoryDossier: React.FC<RegulatoryDossierProps> = ({
   materialId,
-  materialName,
+  getAuthHeaders,
+  initialDossier = null,
 }) => {
-  const [dossier, setDossier] = useState<MaterialRegulatoryDossierDto | null>(
-    null
-  );
-  const [loading, setLoading] = useState<boolean>(false);
+  const [dossier, setDossier] = useState<MaterialRegulatoryDossier | null>(initialDossier);
+  const [loading, setLoading] = useState<boolean>(!initialDossier);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    fetchMaterialRegulatoryDossierApi(materialId)
-      .then((res) => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const headers = getAuthHeaders ? await getAuthHeaders() : {};
+        const data = await fetchMaterialRegulatoryDossierApi(materialId, headers);
         if (!cancelled) {
-          setDossier(res);
+          setDossier(data);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setDossier(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Regulatory dossier unavailable — LOOKUP_REQUIRED.'
+          );
+        }
+      } finally {
+        if (!cancelled) {
           setLoading(false);
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+      }
+    };
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [materialId]);
+  }, [materialId, getAuthHeaders]);
 
   if (loading && !dossier) {
     return (
-      <div className="rounded-lg bg-[#111621] border border-slate-800 p-4 text-xs text-slate-400">
-        Loading on-demand regulatory dossier for {materialName}...
+      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 animate-pulse">
+        Loading regulatory authority records & constituent declarations...
       </div>
     );
   }
 
-  if (!dossier) return null;
+  if (error || !dossier) {
+    return (
+      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5">
+          <HelpCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          {error || 'No regulatory dossier loaded — LOOKUP_REQUIRED.'}
+        </span>
+        <RegulatoryBadge status="LOOKUP_REQUIRED" />
+      </div>
+    );
+  }
+
+  const limit = dossier.regulatoryLimit;
 
   return (
-    <div
-      data-testid="on-demand-regulatory-dossier"
-      className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-4 text-xs"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+    <div className="space-y-3 rounded-xl bg-slate-900/60 border border-slate-800/80 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-          <h4 className="text-sm font-semibold text-white">
-            Structured Regulatory Records (IFRA &amp; EU 1223/2009)
+          <ShieldCheck className="w-4 h-4 text-amber-400" />
+          <h4 className="text-xs font-semibold text-slate-100 uppercase tracking-wider">
+            Normalized Regulatory Evidence ({dossier.regulatoryRecords.length} records)
           </h4>
         </div>
-        <RegulatoryBadge status={dossier.verificationStatus} />
+        <RegulatoryBadge
+          status={limit?.verificationStatus || 'LOOKUP_REQUIRED'}
+        />
       </div>
 
       {dossier.regulatoryRecords.length === 0 ? (
-        <p className="text-slate-400">
-          No separate authority records registered. Treat as LOOKUP_REQUIRED.
-        </p>
+        <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-400">
+          LOOKUP_REQUIRED — No structured authority records stored for this material.
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 text-[11px] text-slate-400">
-                <th className="py-2 pr-3">Authority</th>
-                <th className="py-2 px-3">Rule Type</th>
-                <th className="py-2 px-3">Status / Annex</th>
-                <th className="py-2 px-3 text-right">Max Limit (%)</th>
-                <th className="py-2 pl-3">Summary</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/70">
-              {dossier.regulatoryRecords.map((rec) => (
-                <tr key={rec.id} className="hover:bg-slate-900/40">
-                  <td className="py-2 pr-3 font-mono-tabular font-semibold text-white">
-                    {rec.authority} ({rec.jurisdiction})
-                  </td>
-                  <td className="py-2 px-3 font-mono-tabular text-slate-300">
-                    {rec.ruleType}
-                  </td>
-                  <td className="py-2 px-3 text-slate-300">
-                    {rec.status}
-                    {rec.standardOrAnnex ? ` · ${rec.standardOrAnnex}` : ''}
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono-tabular text-emerald-400">
-                    {rec.maxFinishedProductPct !== null &&
-                    rec.maxFinishedProductPct !== undefined
-                      ? `${rec.maxFinishedProductPct}%`
-                      : rec.maxReadyForUsePct !== null &&
-                        rec.maxReadyForUsePct !== undefined
-                      ? `${rec.maxReadyForUsePct}%`
-                      : '—'}
-                  </td>
-                  <td className="py-2 pl-3 text-slate-300 max-w-md">
-                    {rec.summary}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-2">
+          {dossier.regulatoryRecords.map((rec, idx) => (
+            <div
+              key={rec.id || idx}
+              className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 flex flex-col gap-1 text-xs"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-slate-200">
+                  {rec.authority} · {rec.ruleType} ({rec.status || 'LOOKUP_REQUIRED'})
+                </span>
+                <RegulatoryBadge status={rec.verificationStatus} />
+              </div>
+              {rec.summary && <p className="text-slate-400 text-[11px]">{rec.summary}</p>}
+              <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-500 mt-1">
+                {rec.maxFinishedProductPct !== null && (
+                  <span>Max Finished Product: {rec.maxFinishedProductPct}%</span>
+                )}
+                {rec.sourceDocument && (
+                  <span className="inline-flex items-center gap-1">
+                    <FileCheck2 className="w-3 h-3" />
+                    {rec.sourceDocument}
+                  </span>
+                )}
+                {rec.sourceUrl && (
+                  <a
+                    href={rec.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-amber-400 hover:underline"
+                  >
+                    Source <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {dossier.constituents.length > 0 && (
-        <div className="pt-3 border-t border-slate-800 space-y-2">
-          <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
-            <FileText className="w-3.5 h-3.5 text-amber-400" />
-            <span>
-              Regulated Constituents &amp; Allergen Breakdown (
-              {dossier.constituents.length})
-            </span>
-          </div>
+        <div className="pt-2 border-t border-slate-800/80">
+          <h5 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            Declarable Constituents ({dossier.constituents.length})
+          </h5>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {dossier.constituents.map((c) => (
+            {dossier.constituents.map((c, idx) => (
               <div
-                key={c.id}
-                className="p-2.5 rounded bg-[#0B0E14] border border-slate-800 flex items-center justify-between gap-2"
+                key={c.id || idx}
+                className="p-2 rounded-lg bg-slate-950/70 border border-slate-800/70 flex items-center justify-between text-xs"
               >
-                <div className="min-w-0">
-                  <div className="font-medium text-white truncate">
-                    {c.constituentName}
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-mono-tabular">
-                    CAS {c.constituentCas || 'Listed'} · {c.riskNote || 'Declarable constituent'}
+                <div>
+                  <div className="font-medium text-slate-200">{c.constituentName}</div>
+                  <div className="text-[10px] font-mono text-slate-500">
+                    CAS: {c.constituentCas || 'LOOKUP_REQUIRED'}
                   </div>
                 </div>
-                <span className="font-mono-tabular text-emerald-400 font-semibold shrink-0">
-                  {c.typicalPct}%
+                <span className="font-mono text-amber-300 font-semibold">
+                  {c.typicalPct !== null ? `${c.typicalPct}%` : 'LOOKUP_REQUIRED'}
                 </span>
               </div>
             ))}

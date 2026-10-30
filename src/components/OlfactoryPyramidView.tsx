@@ -1107,6 +1107,30 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
         </div>
       </div>
 
+      {/* Zero-Formula Empty State Banner */}
+      {!activeFormula && (
+        <div
+          data-testid="pyramid-zero-formula-empty-state"
+          className="rounded-xl bg-[#111621] border border-slate-800 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
+        >
+          <div className="space-y-1">
+            <div className="font-semibold text-white text-sm">
+              No Active Formula Selected for Pyramid Analysis
+            </div>
+            <p className="text-slate-400">
+              Create or select a formula in Formula Lab to inspect its 5-tier volatility distribution, bridge cohesion index, and evaporation curve.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenFormulaLab}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold whitespace-nowrap shrink-0 transition-colors"
+          >
+            Create / Select Formula →
+          </button>
+        </div>
+      )}
+
       {/* Main 2-Column Grid with Generous White Space */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column (6 Cols): Minimal Flat Pyramid Schematic + Separated Tier Cards */}

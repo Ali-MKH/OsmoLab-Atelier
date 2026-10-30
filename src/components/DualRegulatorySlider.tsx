@@ -211,14 +211,14 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           )}
           <span className="text-xs font-semibold text-white">
-            Dual Safety Standards: {sourceDocument || 'IFRA & EU Cosmetics Regulation'}
+            Dual Safety Standards: {sourceDocument || 'LOOKUP_REQUIRED'}
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {isEuAllergen && (
             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 border border-amber-500/40 text-amber-300">
-              EU Allergen Declarable ({leaveOnThresholdPct != null ? `>${leaveOnThresholdPct}% leave-on` : 'leave-on threshold lookup required'} / {rinseOffThresholdPct != null ? `>${rinseOffThresholdPct}% rinse-off` : 'rinse-off threshold lookup required'})
+              EU Allergen Declarable ({leaveOnThresholdPct != null ? `>${leaveOnThresholdPct}% leave-on` : 'leave-on threshold LOOKUP_REQUIRED'} / {rinseOffThresholdPct != null ? `>${rinseOffThresholdPct}% rinse-off` : 'rinse-off threshold LOOKUP_REQUIRED'})
             </span>
           )}
           {isProhibited ? (
@@ -274,7 +274,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-xs">
             <span className="text-slate-300 font-medium flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-              <span>{sourceDocument || 'IFRA Standard'} {ifraCategory ? `(${ifraCategory} — Finished Product %)` : '(Finished Product %)'}</span>
+              <span>{sourceDocument || 'IFRA Status: LOOKUP_REQUIRED'} {ifraCategory ? `(${ifraCategory} — Finished Product %)` : '(Category: LOOKUP_REQUIRED)'}</span>
             </span>
             <span className="font-mono-tabular text-slate-300 shrink-0">
               Limit:{' '}
@@ -349,7 +349,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-xs">
             <span className="text-slate-300 font-medium flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-              <span>{euRegulationReference || 'EU Cosmetic Regulation (Annex III Concentration Limit)'}</span>
+              <span>{euRegulationReference || 'EU Cosmetics Status: LOOKUP_REQUIRED'}</span>
             </span>
             <span className="font-mono-tabular text-slate-300 shrink-0">
               Limit:{' '}
@@ -436,7 +436,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
 
         <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1.5">
           <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span>{sourceDocument || euRegulationReference}</span>
+          <span>{sourceDocument || euRegulationReference || 'Source: LOOKUP_REQUIRED'}</span>
           {sourceUrl && (
             <a
               href={sourceUrl}

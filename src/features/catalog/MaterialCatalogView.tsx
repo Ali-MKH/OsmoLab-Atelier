@@ -1,243 +1,264 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  MaterialCatalogView as BaseMaterialCatalogView,
-  MaterialCatalogViewProps,
+  MaterialsAndInventoryView as BaseMaterialCatalogView,
+  type MaterialsAndInventoryViewProps,
 } from '../../components/MaterialsAndInventoryView';
 import {
   fetchCatalogApi,
-  fetchCatalogMaterialDetailApi,
+  type CatalogQueryParams,
+  type LoadState,
 } from '../../api/client';
-import type { RawMaterial, MaterialRegulatoryLimit } from '../../domain/types';
+import type { PyramidUiCode, RawMaterial, UserShelfItem } from '../../domain/types';
 
-export type { MaterialCatalogViewProps };
+export { MaterialFilters, type MaterialFiltersProps } from './MaterialFilters';
+export { PyramidBadge } from './PyramidBadge';
+export {
+  ShelfFilterBar,
+  ShelfItemActionButtons,
+  type PaletteCatalogTab,
+} from './ShelfControls';
 
-const AutonomousMaterialCatalogView: React.FC<MaterialCatalogViewProps> = (props) => {
-  const [catalogMaterials, setCatalogMaterials] = useState<RawMaterial[]>([]);
-  const [catalogLimits, setCatalogLimits] = useState<MaterialRegulatoryLimit[]>([]);
-  const fetchedDetailIds = useRef<Set<number>>(new Set());
+export interface AutonomousMaterialCatalogViewProps
+  extends MaterialsAndInventoryViewProps {
+  getAuthHeaders?: () => Promise<Record<string, string>>;
+  userShelf?: UserShelfItem[];
+}
+
+export interface ServerCatalogQueryState {
+  q: string;
+  family: string;
+  origin: string;
+  pyramidCode: PyramidUiCode | 'ALL';
+}
+
+const CATALOG_PAGE_LIMIT = 50;
+
+function deduplicateMaterialsById(rows: RawMaterial[]): RawMaterial[] {
+  const seen = new Set<number>();
+  const out: RawMaterial[] = [];
+  for (const row of rows) {
+    if (!seen.has(row.id)) {
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+/**
+ * Autonomous, server-driven MaterialCatalogView:
+ * - Owns q, family, origin, pyramidCode, limit=50, offset, total, hasMore, loadState, and error.
+ * - Initial page loads limit=50&offset=0.
+ * - Debounces search/filter queries (~250ms), passes a real AbortSignal, and ignores stale responses.
+ * - Load More increments offset += 50 and deduplicates by material ID.
+ * - Overlays Shelf/Workbench metadata onto visible Catalog rows by material ID only (never appends unrelated shelf items to Catalog results).
+ */
+export const AutonomousMaterialCatalogView: React.FC<
+  AutonomousMaterialCatalogViewProps
+> = ({ getAuthHeaders, userShelf, ...props }) => {
+  const [queryState, setQueryState] = useState<ServerCatalogQueryState>({
+    q: '',
+    family: 'All',
+    origin: 'All',
+    pyramidCode: 'ALL',
+  });
+  const [debouncedQuery, setDebouncedQuery] = useState<ServerCatalogQueryState>(queryState);
+  const [catalogSlice, setCatalogSlice] = useState<RawMaterial[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [offset, setOffset] = useState<number>(0);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestSeqRef = useRef<number>(0);
 
-  // Initial bounded fetch: 50 catalog materials
+  // Debounce query changes by 250ms
   useEffect(() => {
-    let isCurrent = true;
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(queryState);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [queryState]);
 
-    fetchCatalogApi({ limit: 50, offset: 0 })
-      .then((res) => {
-        if (!isCurrent) return;
-        if (Array.isArray(res.materials)) {
-          setCatalogMaterials(res.materials);
-        }
-        if (Array.isArray(res.regulatoryLimits)) {
-          setCatalogLimits(res.regulatoryLimits);
-        }
-      })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.warn('Failed to load initial catalog page:', err);
-        }
-      });
+  const executeCatalogFetch = useCallback(
+    async (
+      activeQuery: ServerCatalogQueryState,
+      targetOffset: number,
+      append: boolean
+    ) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const seq = ++requestSeqRef.current;
 
-    return () => {
-      isCurrent = false;
-      controller.abort();
-    };
-  }, []);
-
-  // Lazy-load material detail when selectedMaterialId changes
-  useEffect(() => {
-    const selId = props.selectedMaterialId;
-    if (!selId || selId <= 0 || fetchedDetailIds.current.has(selId)) return;
-
-    fetchedDetailIds.current.add(selId);
-    fetchCatalogMaterialDetailApi(selId)
-      .then((res) => {
-        if (res.material) {
-          setCatalogMaterials((prev) => {
-            const idx = prev.findIndex((m) => m.id === selId);
-            if (idx >= 0) {
-              return prev.map((m, i) => (i === idx ? { ...m, ...res.material } : m));
-            }
-            return [...prev, res.material];
-          });
-        }
-        if (res.regulatoryLimit) {
-          setCatalogLimits((prev) => {
-            const idx = prev.findIndex((l) => l.materialId === selId);
-            if (idx >= 0) {
-              return prev.map((l, i) => (i === idx ? res.regulatoryLimit! : l));
-            }
-            return [...prev, res.regulatoryLimit!];
-          });
-        }
-      })
-      .catch((err) => {
-        console.warn(`Failed to lazy-load detail for material #${selId}:`, err);
-      });
-  }, [props.selectedMaterialId]);
-
-  // Overlay user shelf/workbench state locally on catalog materials
-  const mergedMaterials = useMemo(() => {
-    const shelfMap = new Map<number, RawMaterial>();
-    for (const m of props.materials) {
-      shelfMap.set(m.id, m);
-    }
-
-    const seenIds = new Set<number>();
-    const result: RawMaterial[] = [];
-
-    for (const catMat of catalogMaterials) {
-      seenIds.add(catMat.id);
-      const shelfItem = shelfMap.get(catMat.id);
-      if (shelfItem) {
-        result.push({
-          ...catMat,
-          ...shelfItem,
-          isOnShelf: true,
-          isOnWorkbench: Boolean(shelfItem.isOnWorkbench),
-        });
+      if (append) {
+        setIsLoadingMore(true);
       } else {
-        result.push(catMat);
+        setLoadState('loading');
       }
-    }
+      setCatalogError(null);
 
-    // Append any shelf materials not present in the current catalog slice
-    for (const shelfMat of props.materials) {
-      if (!seenIds.has(shelfMat.id)) {
-        seenIds.add(shelfMat.id);
-        result.push(shelfMat);
+      try {
+        const headers = getAuthHeaders ? await getAuthHeaders() : {};
+        if (controller.signal.aborted || seq !== requestSeqRef.current) {
+          return;
+        }
+
+        const params: CatalogQueryParams = {
+          q: activeQuery.q,
+          family: activeQuery.family,
+          origin: activeQuery.origin,
+          pyramidCode: activeQuery.pyramidCode,
+          limit: CATALOG_PAGE_LIMIT,
+          offset: targetOffset,
+        };
+
+        const res = await fetchCatalogApi(params, headers, controller.signal);
+        if (controller.signal.aborted || seq !== requestSeqRef.current) {
+          return;
+        }
+
+        const items = Array.isArray(res.items) ? res.items : [];
+        setCatalogSlice((prev) =>
+          append ? deduplicateMaterialsById([...prev, ...items]) : deduplicateMaterialsById(items)
+        );
+        setTotalCount(typeof res.total === 'number' ? res.total : items.length);
+        setOffset(targetOffset);
+        setHasMore(Boolean(res.hasMore));
+        setLoadState('ready');
+      } catch (err: unknown) {
+        if (
+          controller.signal.aborted ||
+          (err instanceof Error && err.name === 'AbortError') ||
+          seq !== requestSeqRef.current
+        ) {
+          return;
+        }
+        setCatalogError(
+          err instanceof Error ? err.message : 'Failed to load catalog slice from server.'
+        );
+        setLoadState('error');
+      } finally {
+        if (seq === requestSeqRef.current) {
+          setIsLoadingMore(false);
+        }
       }
-    }
-
-    return result;
-  }, [catalogMaterials, props.materials]);
-
-  // Merge regulatory limits
-  const mergedLimits = useMemo(() => {
-    const limitMap = new Map<number, MaterialRegulatoryLimit>();
-    for (const lim of catalogLimits) {
-      limitMap.set(lim.materialId, lim);
-    }
-    for (const lim of props.regulatoryLimits) {
-      limitMap.set(lim.materialId, lim);
-    }
-    return Array.from(limitMap.values());
-  }, [catalogLimits, props.regulatoryLimits]);
-
-  // Wrapped shelf action handlers that immediately reflect local updates
-  const handleAddToShelf = useCallback(
-    (
-      materialId: number,
-      payload?: {
-        supplierName?: string | null;
-        supplierProductName?: string | null;
-        workingDilutionPct?: number | null;
-        personalNotes?: string | null;
-        isOnWorkbench?: boolean;
-        pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
-        favorite?: boolean;
-      }
-    ) => {
-      setCatalogMaterials((prev) =>
-        prev.map((m) =>
-          m.id === materialId
-            ? {
-                ...m,
-                isOnShelf: true,
-                isOnWorkbench: payload?.isOnWorkbench ?? m.isOnWorkbench ?? false,
-                supplier: payload?.supplierName ?? m.supplier,
-                workingDilutionPct:
-                  payload?.workingDilutionPct ?? m.workingDilutionPct ?? m.recommendedDilution,
-                personalNotes: payload?.personalNotes ?? m.personalNotes,
-                pyramidOverrideCode:
-                  payload?.pyramidOverrideCode !== undefined
-                    ? payload.pyramidOverrideCode
-                    : m.pyramidOverrideCode,
-                favorite: payload?.favorite ?? m.favorite,
-              }
-            : m
-        )
-      );
-      props.onAddToShelf?.(materialId, payload);
     },
-    [props.onAddToShelf]
+    [getAuthHeaders]
   );
 
-  const handleUpdateShelfItem = useCallback(
-    (
-      materialId: number,
-      payload: {
-        supplierName?: string | null;
-        supplierProductName?: string | null;
-        workingDilutionPct?: number | null;
-        personalNotes?: string | null;
-        isOnWorkbench?: boolean;
-        pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
-        favorite?: boolean;
+  // Trigger server fetch whenever debouncedQuery changes (resets to offset = 0)
+  useEffect(() => {
+    void executeCatalogFetch(debouncedQuery, 0, false);
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
-    ) => {
-      setCatalogMaterials((prev) =>
-        prev.map((m) =>
-          m.id === materialId
-            ? {
-                ...m,
-                isOnShelf: m.isOnShelf || Boolean(payload.isOnWorkbench),
-                isOnWorkbench:
-                  payload.isOnWorkbench !== undefined ? payload.isOnWorkbench : m.isOnWorkbench,
-                supplier:
-                  payload.supplierName !== undefined && payload.supplierName !== null
-                    ? payload.supplierName
-                    : m.supplier,
-                workingDilutionPct:
-                  payload.workingDilutionPct !== undefined
-                    ? payload.workingDilutionPct
-                    : m.workingDilutionPct,
-                personalNotes:
-                  payload.personalNotes !== undefined && payload.personalNotes !== null
-                    ? payload.personalNotes
-                    : m.personalNotes,
-                pyramidOverrideCode:
-                  payload.pyramidOverrideCode !== undefined
-                    ? payload.pyramidOverrideCode
-                    : m.pyramidOverrideCode,
-                favorite: payload.favorite !== undefined ? payload.favorite : m.favorite,
-              }
-            : m
-        )
-      );
-      props.onUpdateShelfItem?.(materialId, payload);
+    };
+  }, [debouncedQuery, executeCatalogFetch]);
+
+  const handleCatalogQueryChange = useCallback(
+    (partial: Partial<ServerCatalogQueryState>) => {
+      setQueryState((prev) => {
+        const next: ServerCatalogQueryState = {
+          q: partial.q !== undefined ? partial.q : prev.q,
+          family: partial.family !== undefined ? partial.family : prev.family,
+          origin: partial.origin !== undefined ? partial.origin : prev.origin,
+          pyramidCode:
+            partial.pyramidCode !== undefined ? partial.pyramidCode : prev.pyramidCode,
+        };
+        if (
+          next.q === prev.q &&
+          next.family === prev.family &&
+          next.origin === prev.origin &&
+          next.pyramidCode === prev.pyramidCode
+        ) {
+          return prev;
+        }
+        return next;
+      });
     },
-    [props.onUpdateShelfItem]
+    []
   );
 
-  const handleRemoveFromShelf = useCallback(
-    (materialId: number) => {
-      setCatalogMaterials((prev) =>
-        prev.map((m) =>
-          m.id === materialId ? { ...m, isOnShelf: false, isOnWorkbench: false } : m
-        )
-      );
-      props.onRemoveFromShelf?.(materialId);
-    },
-    [props.onRemoveFromShelf]
-  );
+  const handleLoadMore = useCallback(() => {
+    if (loadState === 'loading' || isLoadingMore || !hasMore) return;
+    const nextOffset = offset + CATALOG_PAGE_LIMIT;
+    void executeCatalogFetch(debouncedQuery, nextOffset, true);
+  }, [loadState, isLoadingMore, hasMore, offset, debouncedQuery, executeCatalogFetch]);
+
+  // Overlay user shelf/workbench metadata onto visible Catalog rows by material ID only.
+  // Never append unrelated shelf rows into the current Catalog query results.
+  const overlaidCatalogMaterials = useMemo(() => {
+    const shelfById = new Map<number, UserShelfItem>();
+    for (const item of userShelf || []) {
+      shelfById.set(item.materialId, item);
+    }
+    const localPropsById = new Map<number, RawMaterial>();
+    for (const m of props.materials) {
+      localPropsById.set(m.id, m);
+    }
+
+    return catalogSlice.map((catalogRow) => {
+      const shelfRow = shelfById.get(catalogRow.id);
+      const propRow = localPropsById.get(catalogRow.id);
+      if (!shelfRow && !propRow) {
+        return {
+          ...catalogRow,
+          isOnShelf: false,
+          isOnWorkbench: false,
+          favorite: false,
+        };
+      }
+      const isOnShelf = shelfRow ? true : Boolean(propRow?.isOnShelf);
+      return {
+        ...catalogRow,
+        isOnShelf,
+        isOnWorkbench: shelfRow
+          ? Boolean(shelfRow.isOnWorkbench)
+          : Boolean(propRow?.isOnWorkbench),
+        favorite: shelfRow
+          ? Boolean(shelfRow.favorite)
+          : Boolean(propRow?.favorite),
+        supplier: shelfRow?.supplierName || propRow?.supplier || catalogRow.supplier,
+        supplierProductName:
+          shelfRow?.supplierProductName ??
+          propRow?.supplierProductName ??
+          catalogRow.supplierProductName,
+        workingDilutionPct:
+          shelfRow?.workingDilutionPct ??
+          propRow?.workingDilutionPct ??
+          catalogRow.workingDilutionPct,
+        personalNotes:
+          shelfRow?.personalNotes ?? propRow?.personalNotes ?? catalogRow.personalNotes,
+        pyramidOverrideCode:
+          shelfRow?.pyramidOverrideCode ??
+          propRow?.pyramidOverrideCode ??
+          catalogRow.pyramidOverrideCode,
+      };
+    });
+  }, [catalogSlice, userShelf, props.materials]);
 
   return (
     <BaseMaterialCatalogView
       {...props}
-      materials={mergedMaterials}
-      regulatoryLimits={mergedLimits}
-      onAddToShelf={handleAddToShelf}
-      onUpdateShelfItem={handleUpdateShelfItem}
-      onRemoveFromShelf={handleRemoveFromShelf}
+      materials={overlaidCatalogMaterials}
+      shelfMaterials={props.materials}
+      catalogTotalCount={totalCount}
+      catalogHasMore={hasMore}
+      isLoadingMoreCatalog={isLoadingMore || loadState === 'loading'}
+      catalogLoadState={loadState}
+      catalogError={catalogError}
+      onLoadMoreCatalog={handleLoadMore}
+      onRetryCatalog={() => void executeCatalogFetch(debouncedQuery, 0, false)}
+      onCatalogQueryChange={handleCatalogQueryChange}
     />
   );
 };
 
-export const MaterialCatalogView: React.FC<MaterialCatalogViewProps> = (props) => {
-  if (props.mode === 'accords') {
-    return <BaseMaterialCatalogView {...props} />;
-  }
-  return <AutonomousMaterialCatalogView {...props} />;
-};
+export const MaterialCatalogView = AutonomousMaterialCatalogView;
+export type MaterialCatalogViewProps = AutonomousMaterialCatalogViewProps;

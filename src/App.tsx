@@ -24,22 +24,28 @@ import {
 } from './features/formula/FormulaLabView';
 import { MaterialCatalogView } from './features/catalog/MaterialCatalogView';
 import { EvaluationAndJournalView } from './features/evaluation/EvaluationAndJournalView';
+import { OlfactoryMentorView } from './features/mentor/OlfactoryMentorView';
 import {
-  SEED_ACCORDS,
-  SEED_EVALUATIONS,
-  SEED_EXPERIMENTS,
-  SEED_FORMULAS,
-  SEED_MATERIALS,
-  SEED_REGULATORY_LIMITS,
-  SEED_SCENT_MEMORIES,
-  SEED_USAGE_REVIEWS,
-} from './domain/seed-data';
-import {
+  LoadState,
+  fetchBootstrapApi,
+  fetchCatalogPageApi,
+  fetchMaterialDetailApi,
+  fetchUserShelfApi,
   upsertShelfItemApi,
   removeShelfItemApi,
+  fetchFormulasListApi,
+  saveFormulaVersionApi,
+  fetchAccordsApi,
+  createAccordApi,
+  createMaterialApi,
+  fetchExperimentsApi,
+  createExperimentApi,
+  fetchEvaluationsApi,
+  createEvaluationApi,
+  fetchScentMemoriesApi,
+  saveScentMemoryApi,
 } from './api/client';
 import {
-  OlfactoryMentorView,
   GlobalSearchView,
   SettingsView,
   ThemePaletteId,
@@ -346,55 +352,104 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  // Workspace Data State (seeded with rich perfumery domain defaults for immediate exploration)
-  const [materials, setMaterials] = useState<RawMaterial[]>(SEED_MATERIALS);
-  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>(
-    SEED_REGULATORY_LIMITS
-  );
-  const [scentMemories, setScentMemories] = useState<ScentMemoryRecord[]>(
-    SEED_SCENT_MEMORIES
-  );
-  const [accords, setAccords] = useState<AccordDefinition[]>(SEED_ACCORDS);
-  const [formulas, setFormulas] = useState<Formula[]>(SEED_FORMULAS);
-  const [experiments, setExperiments] = useState<ExperimentEntry[]>(SEED_EXPERIMENTS);
-  const [evaluations, setEvaluations] = useState<SensoryEvaluation[]>(SEED_EVALUATIONS);
-  const [usageReviews, setUsageReviews] = useState<MaterialUsageReview[]>(
-    SEED_USAGE_REVIEWS
-  );
-  const [userShelfItems, setUserShelfItems] = useState<UserShelfItem[]>([]);
+  // Independent focused endpoint load states
+  const [bootstrapLoadState, setBootstrapLoadState] = useState<LoadState>('idle');
+  const [shelfLoadState, setShelfLoadState] = useState<LoadState>('idle');
+  const [formulasLoadState, setFormulasLoadState] = useState<LoadState>('idle');
+  const [accordsLoadState, setAccordsLoadState] = useState<LoadState>('idle');
 
-  // Active Selection State (persisted across reloads)
-  const [activeFormulaId, setActiveFormulaId] = useState<number>(() => {
+  // Workspace Data State (no runtime SEED_* fallback; hydrated from focused APIs or user-created session storage)
+  const [materials, setMaterials] = useState<RawMaterial[]>(() => {
     try {
-      const saved = Number(localStorage.getItem(ACTIVE_FORMULA_STORAGE_KEY));
-      if (saved && SEED_FORMULAS.some((f) => f.id === saved)) return saved;
+      const raw = localStorage.getItem('osmolab_stage2_shelf_materials');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as RawMaterial[];
+      }
     } catch {
       // ignore
     }
-    return SEED_FORMULAS[0].id;
+    return [];
   });
-  const [activeVersionLabel, setActiveVersionLabel] = useState<string>(() => {
+  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>([]);
+  const [scentMemories, setScentMemories] = useState<ScentMemoryRecord[]>([]);
+  const [accords, setAccords] = useState<AccordDefinition[]>(() => {
+    try {
+      const raw = localStorage.getItem('osmolab_stage2_accords');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as AccordDefinition[];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+  const [formulas, setFormulas] = useState<Formula[]>(() => {
+    try {
+      const raw = localStorage.getItem('osmolab_stage2_formulas');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as Formula[];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+  const [experiments, setExperiments] = useState<ExperimentEntry[]>([]);
+  const [evaluations, setEvaluations] = useState<SensoryEvaluation[]>([]);
+  const [usageReviews, setUsageReviews] = useState<MaterialUsageReview[]>([]);
+  const [userShelfItems, setUserShelfItems] = useState<UserShelfItem[]>(() => {
+    try {
+      const raw = localStorage.getItem('osmolab_stage2_shelf_items');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as UserShelfItem[];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  // Nullable Active Selection State (never fabricate ID 0 or version V1 when no Formula exists)
+  const [activeFormulaId, setActiveFormulaId] = useState<number | null>(() => {
+    try {
+      const saved = Number(localStorage.getItem(ACTIVE_FORMULA_STORAGE_KEY));
+      if (saved > 0 && formulas.some((f) => f.id === saved)) return saved;
+    } catch {
+      // ignore
+    }
+    return formulas[0]?.id ?? null;
+  });
+  const [activeVersionLabel, setActiveVersionLabel] = useState<string | null>(() => {
+    if (formulas.length === 0) return null;
     try {
       const saved = localStorage.getItem(ACTIVE_VERSION_STORAGE_KEY);
       if (saved && saved.trim()) return saved;
     } catch {
       // ignore
     }
-    return SEED_FORMULAS[0].activeVersionLabel;
+    return formulas[0]?.activeVersionLabel ?? null;
   });
-  const [selectedMaterialId, setSelectedMaterialId] = useState<number>(() => {
+  const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(() => {
     try {
       const saved = Number(localStorage.getItem(SELECTED_MATERIAL_STORAGE_KEY));
-      if (saved && SEED_MATERIALS.some((m) => m.id === saved)) return saved;
+      if (saved > 0) return saved;
     } catch {
       // ignore
     }
-    return SEED_MATERIALS[0].id;
+    return null;
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem(ACTIVE_FORMULA_STORAGE_KEY, String(activeFormulaId));
+      if (activeFormulaId !== null) {
+        localStorage.setItem(ACTIVE_FORMULA_STORAGE_KEY, String(activeFormulaId));
+      } else {
+        localStorage.removeItem(ACTIVE_FORMULA_STORAGE_KEY);
+      }
     } catch {
       // ignore
     }
@@ -402,7 +457,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(ACTIVE_VERSION_STORAGE_KEY, activeVersionLabel);
+      if (activeVersionLabel !== null) {
+        localStorage.setItem(ACTIVE_VERSION_STORAGE_KEY, activeVersionLabel);
+      } else {
+        localStorage.removeItem(ACTIVE_VERSION_STORAGE_KEY);
+      }
     } catch {
       // ignore
     }
@@ -410,11 +469,48 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SELECTED_MATERIAL_STORAGE_KEY, String(selectedMaterialId));
+      if (selectedMaterialId !== null) {
+        localStorage.setItem(SELECTED_MATERIAL_STORAGE_KEY, String(selectedMaterialId));
+      } else {
+        localStorage.removeItem(SELECTED_MATERIAL_STORAGE_KEY);
+      }
     } catch {
       // ignore
     }
   }, [selectedMaterialId]);
+
+  // Persist user-created state to localStorage for unauthenticated Preview reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem('osmolab_stage2_formulas', JSON.stringify(formulas));
+    } catch {
+      // ignore
+    }
+  }, [formulas]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('osmolab_stage2_shelf_materials', JSON.stringify(materials));
+    } catch {
+      // ignore
+    }
+  }, [materials]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('osmolab_stage2_shelf_items', JSON.stringify(userShelfItems));
+    } catch {
+      // ignore
+    }
+  }, [userShelfItems]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('osmolab_stage2_accords', JSON.stringify(accords));
+    } catch {
+      // ignore
+    }
+  }, [accords]);
 
   useEffect(() => {
     try {
@@ -595,37 +691,6 @@ export default function App() {
     return {};
   }, [idToken]);
 
-  const applyServerWorkspace = useCallback((data: Record<string, unknown>) => {
-    if (Array.isArray(data.materials) && data.materials.length > 0) {
-      setMaterials(data.materials as RawMaterial[]);
-    }
-    if (Array.isArray(data.regulatoryLimits)) {
-      setRegulatoryLimits(data.regulatoryLimits as MaterialRegulatoryLimit[]);
-    }
-    if (Array.isArray(data.scentMemories)) {
-      setScentMemories(data.scentMemories as ScentMemoryRecord[]);
-    }
-    if (Array.isArray(data.accords)) {
-      setAccords(data.accords as AccordDefinition[]);
-    }
-    if (Array.isArray(data.formulas) && data.formulas.length > 0) {
-      const fList = data.formulas as Formula[];
-      setFormulas(fList);
-      setActiveFormulaId((prev) =>
-        fList.some((f) => f.id === prev) ? prev : fList[0].id
-      );
-    }
-    if (Array.isArray(data.experiments)) {
-      setExperiments(data.experiments as ExperimentEntry[]);
-    }
-    if (Array.isArray(data.evaluations)) {
-      setEvaluations(data.evaluations as SensoryEvaluation[]);
-    }
-    if (Array.isArray(data.usageReviews)) {
-      setUsageReviews(data.usageReviews as MaterialUsageReview[]);
-    }
-  }, []);
-
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -640,25 +705,142 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  const reloadWorkspaceData = useCallback(async () => {
-    if (!idToken) return;
-    try {
-      const res = await fetch('/api/workspace', {
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
-      }
-    } catch (err) {
-      console.warn('Failed to load user workspace data:', err);
+  // Focused Hydration: Load /api/bootstrap, /api/shelf, /api/formulas, /api/accords independently
+  // One failed endpoint never erases successful data or falls back to seed data
+  const hydrateFocusedWorkspaceData = useCallback(async () => {
+    if (!idToken) {
+      setBootstrapLoadState('ready');
+      setShelfLoadState('ready');
+      setFormulasLoadState('ready');
+      setAccordsLoadState('ready');
+      return;
     }
-  }, [idToken, getAuthHeaders, applyServerWorkspace]);
 
-  // Load user data strictly when authenticated with a verified Firebase ID token
+    const headers = getAuthHeaders();
+    setBootstrapLoadState('loading');
+    try {
+      await fetchBootstrapApi(headers);
+      setBootstrapLoadState('ready');
+    } catch (err) {
+      console.warn('Bootstrap endpoint failed:', err);
+      setBootstrapLoadState('error');
+    }
+
+    setShelfLoadState('loading');
+    setFormulasLoadState('loading');
+    setAccordsLoadState('loading');
+
+    const [
+      shelfResult,
+      formulasResult,
+      accordsResult,
+      evalsResult,
+      expsResult,
+      memoriesResult,
+    ] = await Promise.allSettled([
+      fetchUserShelfApi(headers),
+      fetchFormulasListApi(headers),
+      fetchAccordsApi(headers),
+      fetchEvaluationsApi(headers),
+      fetchExperimentsApi(headers),
+      fetchScentMemoriesApi(headers),
+    ]);
+
+    if (shelfResult.status === 'fulfilled') {
+      const shelfItems = Array.isArray(shelfResult.value.shelf)
+        ? shelfResult.value.shelf
+        : [];
+      setUserShelfItems(shelfItems);
+      if (shelfItems.length > 0) {
+        try {
+          const shelfCatalog = await fetchCatalogPageApi(
+            { shelfOnly: true, limit: 200, offset: 0 },
+            headers
+          );
+          const shelfById = new Map<number, UserShelfItem>();
+          for (const item of shelfItems) {
+            shelfById.set(item.materialId, item);
+          }
+          const shelfMats: RawMaterial[] = shelfCatalog.items.map((mat) => {
+            const item = shelfById.get(mat.id);
+            return {
+              ...mat,
+              isOnShelf: true,
+              isOnWorkbench: item ? Boolean(item.isOnWorkbench) : Boolean(mat.isOnWorkbench),
+              favorite: item ? Boolean(item.favorite) : Boolean(mat.favorite),
+              supplier: item?.supplierName || mat.supplier,
+              supplierProductName:
+                item?.supplierProductName || mat.supplierProductName || '',
+              workingDilutionPct:
+                item?.workingDilutionPct ??
+                mat.workingDilutionPct ??
+                mat.recommendedDilution,
+              personalNotes: item?.personalNotes || mat.personalNotes || '',
+              pyramidOverrideCode:
+                item?.pyramidOverrideCode !== undefined
+                  ? item.pyramidOverrideCode
+                  : mat.pyramidOverrideCode,
+            };
+          });
+          setMaterials(shelfMats);
+        } catch (err) {
+          console.warn('Failed to hydrate shelf materials slice:', err);
+        }
+      } else {
+        setMaterials([]);
+      }
+      setShelfLoadState('ready');
+    } else {
+      console.warn('Failed to load user shelf:', shelfResult.reason);
+      setShelfLoadState('error');
+    }
+
+    if (formulasResult.status === 'fulfilled') {
+      const fList = Array.isArray(formulasResult.value.formulas)
+        ? formulasResult.value.formulas
+        : [];
+      setFormulas(fList);
+      if (fList.length === 0) {
+        setActiveFormulaId(null);
+        setActiveVersionLabel(null);
+      } else {
+        setActiveFormulaId((prev) => {
+          const nextFormula = fList.find((f) => f.id === prev) ?? fList[0];
+          setActiveVersionLabel(nextFormula.activeVersionLabel);
+          return nextFormula.id;
+        });
+      }
+      setFormulasLoadState('ready');
+    } else {
+      console.warn('Failed to load formulas list:', formulasResult.reason);
+      setFormulasLoadState('error');
+    }
+
+    if (accordsResult.status === 'fulfilled') {
+      const aList = Array.isArray(accordsResult.value.accords)
+        ? accordsResult.value.accords
+        : [];
+      setAccords(aList);
+      setAccordsLoadState('ready');
+    } else {
+      console.warn('Failed to load accords list:', accordsResult.reason);
+      setAccordsLoadState('error');
+    }
+
+    if (evalsResult.status === 'fulfilled' && Array.isArray(evalsResult.value.evaluations)) {
+      setEvaluations(evalsResult.value.evaluations);
+    }
+    if (expsResult.status === 'fulfilled' && Array.isArray(expsResult.value.experiments)) {
+      setExperiments(expsResult.value.experiments);
+    }
+    if (memoriesResult.status === 'fulfilled' && Array.isArray(memoriesResult.value.scentMemories)) {
+      setScentMemories(memoriesResult.value.scentMemories);
+    }
+  }, [idToken, getAuthHeaders]);
+
   useEffect(() => {
-    reloadWorkspaceData();
-  }, [reloadWorkspaceData]);
+    void hydrateFocusedWorkspaceData();
+  }, [hydrateFocusedWorkspaceData]);
 
   // Shelf & Workbench handlers (Global Catalog -> My Shelf -> Current Workbench -> Formula)
   const handleAddToShelf = useCallback(
@@ -674,55 +856,151 @@ export default function App() {
         favorite?: boolean;
       } = {}
     ) => {
-      setMaterials((prev) =>
-        prev.map((m) =>
-          m.id === materialId
-            ? {
-                ...m,
-                isOnShelf: true,
-                isOnWorkbench: payload.isOnWorkbench ?? m.isOnWorkbench ?? false,
-                supplier: payload.supplierName ?? m.supplier,
-                supplierProductName: payload.supplierProductName ?? m.supplierProductName,
-                workingDilutionPct:
-                  payload.workingDilutionPct ?? m.workingDilutionPct ?? m.recommendedDilution,
-                personalNotes: payload.personalNotes ?? m.personalNotes,
-                pyramidOverrideCode:
-                  payload.pyramidOverrideCode !== undefined
-                    ? payload.pyramidOverrideCode
-                    : m.pyramidOverrideCode,
-                favorite: payload.favorite ?? m.favorite,
-              }
-            : m
-        )
-      );
+      // Ensure material metadata is present in `materials` (Shelf materials slice)
+      let resolvedMat: RawMaterial | null = null;
+      setMaterials((prev) => {
+        const existing = prev.find((m) => m.id === materialId);
+        if (existing) {
+          resolvedMat = existing;
+          return prev.map((m) =>
+            m.id === materialId
+              ? {
+                  ...m,
+                  isOnShelf: true,
+                  isOnWorkbench: payload.isOnWorkbench ?? m.isOnWorkbench ?? false,
+                  supplier: payload.supplierName ?? m.supplier,
+                  supplierProductName: payload.supplierProductName ?? m.supplierProductName,
+                  workingDilutionPct:
+                    payload.workingDilutionPct ?? m.workingDilutionPct ?? m.recommendedDilution,
+                  personalNotes: payload.personalNotes ?? m.personalNotes,
+                  pyramidOverrideCode:
+                    payload.pyramidOverrideCode !== undefined
+                      ? payload.pyramidOverrideCode
+                      : m.pyramidOverrideCode,
+                  favorite: payload.favorite ?? m.favorite,
+                }
+              : m
+          );
+        }
+        return prev;
+      });
+
+      if (!resolvedMat) {
+        try {
+          const detail = await fetchMaterialDetailApi(materialId, getAuthHeaders());
+          if (detail.material) {
+            const addedMat: RawMaterial = {
+              ...detail.material,
+              isOnShelf: true,
+              isOnWorkbench: payload.isOnWorkbench ?? false,
+              supplier: payload.supplierName ?? detail.material.supplier,
+              supplierProductName:
+                payload.supplierProductName ?? detail.material.supplierProductName ?? '',
+              workingDilutionPct:
+                payload.workingDilutionPct ??
+                detail.material.workingDilutionPct ??
+                detail.material.recommendedDilution,
+              personalNotes: payload.personalNotes ?? detail.material.personalNotes ?? '',
+              pyramidOverrideCode:
+                payload.pyramidOverrideCode !== undefined
+                  ? payload.pyramidOverrideCode
+                  : detail.material.pyramidOverrideCode,
+              favorite: payload.favorite ?? detail.material.favorite,
+            };
+            setMaterials((prev) => {
+              const exists = prev.some((m) => m.id === materialId);
+              return exists
+                ? prev.map((m) => (m.id === materialId ? addedMat : m))
+                : [...prev, addedMat];
+            });
+            setUserShelfItems((prev) => {
+              const nowIso = new Date().toISOString();
+              const syntheticItem: UserShelfItem = {
+                id: Date.now(),
+                userUid: firebaseUser?.uid || 'local-session',
+                materialId,
+                supplierName: addedMat.supplier || '',
+                supplierProductName: addedMat.supplierProductName || '',
+                workingDilutionPct: addedMat.workingDilutionPct ?? null,
+                personalNotes: addedMat.personalNotes || '',
+                isOnWorkbench: Boolean(addedMat.isOnWorkbench),
+                pyramidOverrideCode: addedMat.pyramidOverrideCode ?? null,
+                favorite: Boolean(addedMat.favorite),
+                addedAt: nowIso,
+                updatedAt: nowIso,
+              };
+              const idx = prev.findIndex((s) => s.materialId === materialId);
+              return idx >= 0
+                ? prev.map((s, i) => (i === idx ? syntheticItem : s))
+                : [...prev, syntheticItem];
+            });
+          }
+        } catch (err) {
+          console.warn('Could not load material detail for shelf addition:', err);
+        }
+      } else {
+        setUserShelfItems((prev) => {
+          const idx = prev.findIndex((s) => s.materialId === materialId);
+          const nowIso = new Date().toISOString();
+          const item: UserShelfItem = {
+            id: idx >= 0 ? prev[idx].id : Date.now(),
+            userUid: firebaseUser?.uid || 'local-session',
+            materialId,
+            supplierName:
+              payload.supplierName ?? (idx >= 0 ? prev[idx].supplierName : ''),
+            supplierProductName:
+              payload.supplierProductName ??
+              (idx >= 0 ? prev[idx].supplierProductName : ''),
+            workingDilutionPct:
+              payload.workingDilutionPct ?? (idx >= 0 ? prev[idx].workingDilutionPct : null),
+            personalNotes:
+              payload.personalNotes ?? (idx >= 0 ? prev[idx].personalNotes : ''),
+            isOnWorkbench:
+              payload.isOnWorkbench ?? (idx >= 0 ? prev[idx].isOnWorkbench : false),
+            pyramidOverrideCode:
+              payload.pyramidOverrideCode !== undefined
+                ? payload.pyramidOverrideCode
+                : idx >= 0
+                ? prev[idx].pyramidOverrideCode
+                : null,
+            favorite: payload.favorite ?? (idx >= 0 ? prev[idx].favorite : false),
+            addedAt: idx >= 0 ? prev[idx].addedAt : nowIso,
+            updatedAt: nowIso,
+          };
+          return idx >= 0
+            ? prev.map((s, i) => (i === idx ? item : s))
+            : [...prev, item];
+        });
+      }
+
       if (!idToken) return;
       try {
         const res = await upsertShelfItemApi(
           materialId,
           {
-            supplierName: payload.supplierName,
-            supplierProductName: payload.supplierProductName,
+            supplierName: payload.supplierName ?? undefined,
+            supplierProductName: payload.supplierProductName ?? undefined,
             workingDilutionPct: payload.workingDilutionPct,
-            personalNotes: payload.personalNotes,
+            personalNotes: payload.personalNotes ?? undefined,
             isOnWorkbench: payload.isOnWorkbench,
             pyramidOverrideCode: payload.pyramidOverrideCode,
             favorite: payload.favorite,
           },
           getAuthHeaders()
         );
-        if (res.shelfItem) {
+        if (res.item) {
           setUserShelfItems((prev) => {
             const idx = prev.findIndex((s) => s.materialId === materialId);
             return idx >= 0
-              ? prev.map((s, i) => (i === idx ? res.shelfItem! : s))
-              : [...prev, res.shelfItem!];
+              ? prev.map((s, i) => (i === idx ? res.item : s))
+              : [...prev, res.item];
           });
         }
       } catch (err) {
         console.warn('Shelf addition failed:', err);
       }
     },
-    [idToken, getAuthHeaders]
+    [idToken, getAuthHeaders, firebaseUser]
   );
 
   const handleUpdateShelfItem = useCallback(
@@ -775,24 +1053,57 @@ export default function App() {
           };
         })
       );
+      setUserShelfItems((prev) =>
+        prev.map((s) =>
+          s.materialId === materialId
+            ? {
+                ...s,
+                supplierName:
+                  payload.supplierName !== undefined
+                    ? payload.supplierName ?? ''
+                    : s.supplierName,
+                supplierProductName:
+                  payload.supplierProductName !== undefined
+                    ? payload.supplierProductName ?? ''
+                    : s.supplierProductName,
+                workingDilutionPct:
+                  payload.workingDilutionPct !== undefined
+                    ? payload.workingDilutionPct
+                    : s.workingDilutionPct,
+                personalNotes:
+                  payload.personalNotes !== undefined
+                    ? payload.personalNotes ?? ''
+                    : s.personalNotes,
+                isOnWorkbench:
+                  payload.isOnWorkbench !== undefined ? payload.isOnWorkbench : s.isOnWorkbench,
+                pyramidOverrideCode:
+                  payload.pyramidOverrideCode !== undefined
+                    ? payload.pyramidOverrideCode ?? null
+                    : s.pyramidOverrideCode,
+                favorite: payload.favorite !== undefined ? payload.favorite : s.favorite,
+                updatedAt: new Date().toISOString(),
+              }
+            : s
+        )
+      );
       if (!idToken) return;
       try {
         const res = await upsertShelfItemApi(
           materialId,
           {
-            supplierName: payload.supplierName,
-            supplierProductName: payload.supplierProductName,
+            supplierName: payload.supplierName ?? undefined,
+            supplierProductName: payload.supplierProductName ?? undefined,
             workingDilutionPct: payload.workingDilutionPct,
-            personalNotes: payload.personalNotes,
+            personalNotes: payload.personalNotes ?? undefined,
             isOnWorkbench: payload.isOnWorkbench,
             pyramidOverrideCode: payload.pyramidOverrideCode,
             favorite: payload.favorite,
           },
           getAuthHeaders()
         );
-        if (res.shelfItem) {
+        if (res.item) {
           setUserShelfItems((prev) =>
-            prev.map((s) => (s.materialId === materialId ? res.shelfItem! : s))
+            prev.map((s) => (s.materialId === materialId ? res.item : s))
           );
         }
       } catch (err) {
@@ -804,15 +1115,11 @@ export default function App() {
 
   const handleRemoveFromShelf = useCallback(
     async (materialId: number) => {
-      setMaterials((prev) =>
-        prev.map((m) =>
-          m.id === materialId ? { ...m, isOnShelf: false, isOnWorkbench: false } : m
-        )
-      );
+      setMaterials((prev) => prev.filter((m) => m.id !== materialId));
+      setUserShelfItems((prev) => prev.filter((s) => s.materialId !== materialId));
       if (!idToken) return;
       try {
         await removeShelfItemApi(materialId, getAuthHeaders());
-        setUserShelfItems((prev) => prev.filter((s) => s.materialId !== materialId));
       } catch (err) {
         console.warn('Shelf removal failed:', err);
       }
@@ -820,10 +1127,27 @@ export default function App() {
     [idToken, getAuthHeaders]
   );
 
+  const handleLoadStarterOrgan = useCallback(
+    async (starterTier: 'starter_25' | 'atelier_60' | 'professional_100' = 'starter_25') => {
+      try {
+        const page = await fetchCatalogPageApi({ limit: 50, offset: 0 }, getAuthHeaders());
+        const targetCount =
+          starterTier === 'starter_25' ? 12 : starterTier === 'atelier_60' ? 24 : 36;
+        const candidates = page.items.slice(0, targetCount);
+        for (const mat of candidates) {
+          await handleAddToShelf(mat.id, { isOnWorkbench: true });
+        }
+      } catch (err) {
+        console.warn('Starter organ load failed:', err);
+      }
+    },
+    [getAuthHeaders, handleAddToShelf]
+  );
+
   // Retry handler passed to TabErrorBoundary to recover view state and reload workspace data
   const handleRetryViewData = useCallback(() => {
-    void reloadWorkspaceData();
-  }, [reloadWorkspaceData]);
+    void hydrateFocusedWorkspaceData();
+  }, [hydrateFocusedWorkspaceData]);
 
   // Synchronize Dark / Light and 6 Palettes with <html> data-theme and classes
   useEffect(() => {
@@ -885,25 +1209,34 @@ export default function App() {
     await signOut(auth);
     setFirebaseUser(null);
     setIdToken(null);
-    setMaterials(SEED_MATERIALS);
-    setRegulatoryLimits(SEED_REGULATORY_LIMITS);
-    setScentMemories(SEED_SCENT_MEMORIES);
-    setAccords(SEED_ACCORDS);
-    setFormulas(SEED_FORMULAS);
-    setExperiments(SEED_EXPERIMENTS);
-    setEvaluations(SEED_EVALUATIONS);
-    setUsageReviews(SEED_USAGE_REVIEWS);
+    setMaterials([]);
+    setRegulatoryLimits([]);
+    setScentMemories([]);
+    setAccords([]);
+    setFormulas([]);
+    setExperiments([]);
+    setEvaluations([]);
+    setUsageReviews([]);
     setUserShelfItems([]);
-    setActiveFormulaId(SEED_FORMULAS[0].id);
-    setActiveVersionLabel(SEED_FORMULAS[0].activeVersionLabel);
-    setSelectedMaterialId(SEED_MATERIALS[0].id);
+    setActiveFormulaId(null);
+    setActiveVersionLabel(null);
+    setSelectedMaterialId(null);
+    try {
+      localStorage.removeItem('osmolab_stage2_formulas');
+      localStorage.removeItem('osmolab_stage2_shelf_materials');
+      localStorage.removeItem('osmolab_stage2_shelf_items');
+      localStorage.removeItem('osmolab_stage2_accords');
+    } catch {
+      // ignore
+    }
   };
 
-  const activeFormula: Formula =
-    formulas.find((f) => f.id === activeFormulaId) || formulas[0] || SEED_FORMULAS[0];
+  const activeFormula: Formula | null = useMemo(
+    () => formulas.find((f) => f.id === activeFormulaId) ?? formulas[0] ?? null,
+    [formulas, activeFormulaId]
+  );
 
-
-  // Handlers for PostgreSQL mutations with optimistic updates
+  // Handlers for PostgreSQL mutations with focused API responses
   const handleSaveFormulaVersion = async (
     formulaPayload: Partial<Formula> & { id?: number; name: string },
     versionPayload: {
@@ -1005,14 +1338,26 @@ export default function App() {
 
     if (!idToken) return;
     try {
-      const res = await fetch('/api/formulas/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ formula: formulaPayload, version: versionPayload }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const saved = await saveFormulaVersionApi(
+        { formula: formulaPayload, version: versionPayload },
+        getAuthHeaders()
+      );
+      if (saved.formula) {
+        setFormulas((prev) => {
+          const exists = prev.some(
+            (f) => f.id === saved.formula!.id || f.id === formulaPayload.id
+          );
+          if (exists) {
+            return prev.map((f) =>
+              f.id === saved.formula!.id || f.id === formulaPayload.id
+                ? saved.formula!
+                : f
+            );
+          }
+          return [...prev, saved.formula!];
+        });
+        setActiveFormulaId(saved.formula.id);
+        setActiveVersionLabel(saved.formula.activeVersionLabel);
       }
     } catch (err) {
       console.warn('Queued formula save locally:', err);
@@ -1026,19 +1371,20 @@ export default function App() {
     }
   ) => {
     const tempId = Date.now();
-    setMaterials((prev) => [...prev, { ...payload, id: tempId }]);
+    const localMat: RawMaterial = { ...payload, id: tempId, isOnShelf: true };
+    setMaterials((prev) => [...prev, localMat]);
     setSelectedMaterialId(tempId);
 
     if (!idToken) return;
     try {
-      const res = await fetch('/api/materials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const created = await createMaterialApi(payload, getAuthHeaders());
+      if (created.material) {
+        setMaterials((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...created.material, isOnShelf: true } : m
+          )
+        );
+        setSelectedMaterialId(created.material.id);
       }
     } catch (err) {
       console.warn('Saved material to local cache:', err);
@@ -1046,17 +1392,15 @@ export default function App() {
   };
 
   const handleCreateAccord = async (payload: Omit<AccordDefinition, 'id'>) => {
-    setAccords((prev) => [...prev, { ...payload, id: Date.now() }]);
+    const tempId = Date.now();
+    setAccords((prev) => [...prev, { ...payload, id: tempId }]);
     if (!idToken) return;
     try {
-      const res = await fetch('/api/accords', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const created = await createAccordApi(payload, getAuthHeaders());
+      if (created.accord) {
+        setAccords((prev) =>
+          prev.map((a) => (a.id === tempId ? created.accord : a))
+        );
       }
     } catch (err) {
       console.warn('Saved accord to local cache:', err);
@@ -1074,17 +1418,15 @@ export default function App() {
   };
 
   const handleAddExperiment = async (entry: Omit<ExperimentEntry, 'id'>) => {
-    setExperiments((prev) => [{ ...entry, id: Date.now() }, ...prev]);
+    const tempId = Date.now();
+    setExperiments((prev) => [{ ...entry, id: tempId }, ...prev]);
     if (!idToken) return;
     try {
-      const res = await fetch('/api/experiments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(entry),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const created = await createExperimentApi(entry, getAuthHeaders());
+      if (created.experiment) {
+        setExperiments((prev) =>
+          prev.map((e) => (e.id === tempId ? created.experiment : e))
+        );
       }
     } catch (err) {
       console.warn('Saved experiment locally:', err);
@@ -1094,24 +1436,22 @@ export default function App() {
   const handleAddEvaluation = async (
     evaluation: Omit<SensoryEvaluation, 'id' | 'createdAt'>
   ) => {
+    const tempId = Date.now();
     setEvaluations((prev) => [
       {
         ...evaluation,
-        id: Date.now(),
+        id: tempId,
         createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
       },
       ...prev,
     ]);
     if (!idToken) return;
     try {
-      const res = await fetch('/api/evaluations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(evaluation),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const created = await createEvaluationApi(evaluation, getAuthHeaders());
+      if (created.evaluation) {
+        setEvaluations((prev) =>
+          prev.map((ev) => (ev.id === tempId ? created.evaluation : ev))
+        );
       }
     } catch (err) {
       console.warn('Saved evaluation locally:', err);
@@ -1121,28 +1461,28 @@ export default function App() {
   const handleSaveScentMemory = async (
     record: Omit<ScentMemoryRecord, 'id' | 'lastReviewedAt'>
   ) => {
+    const today = new Date().toISOString().slice(0, 10);
     setScentMemories((prev) => {
       const idx = prev.findIndex((m) => m.materialId === record.materialId);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], ...record, lastReviewedAt: '2026-10-23' };
+        copy[idx] = { ...copy[idx], ...record, lastReviewedAt: today };
         return copy;
       }
       return [
         ...prev,
-        { ...record, id: Date.now(), lastReviewedAt: '2026-10-23' },
+        { ...record, id: Date.now(), lastReviewedAt: today },
       ];
     });
     if (!idToken) return;
     try {
-      const res = await fetch('/api/memories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(record),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const saved = await saveScentMemoryApi(record, getAuthHeaders());
+      if (saved.scentMemory) {
+        setScentMemories((prev) =>
+          prev.map((m) =>
+            m.materialId === record.materialId ? saved.scentMemory : m
+          )
+        );
       }
     } catch (err) {
       console.warn('Saved scent memory locally:', err);
@@ -1672,48 +2012,60 @@ export default function App() {
                     <div>
                       <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
                         <span className="font-semibold text-white">01. Current Work</span>
-                        <span className="font-mono-tabular">{formulas.length} Active</span>
+                        <span className="font-mono-tabular">
+                          {formulasLoadState === 'loading'
+                            ? 'Loading…'
+                            : `${formulas.length} Active`}
+                        </span>
                       </div>
                       <div className="space-y-2.5">
-                        {formulas.map((f) => (
-                          <div
-                            key={f.id}
-                            className="p-3 rounded bg-[#0B0E14] border border-slate-800/90 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <div className="font-semibold text-white">
-                                {f.name} ({f.activeVersionLabel})
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                {f.projectName} · {f.status} · Updated {f.updatedAt}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveFormulaId(f.id);
-                                setActiveVersionLabel(f.activeVersionLabel);
-                                setActiveNav('formula-lab');
-                              }}
-                              className="text-emerald-400 hover:text-emerald-300 font-medium whitespace-nowrap shrink-0"
-                            >
-                              Formulate →
-                            </button>
+                        {formulas.length === 0 ? (
+                          <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 text-xs text-slate-400">
+                            No formulas created yet. Open Formula Lab to create your first formula.
                           </div>
-                        ))}
+                        ) : (
+                          formulas.map((f) => (
+                            <div
+                              key={f.id}
+                              className="p-3 rounded bg-[#0B0E14] border border-slate-800/90 flex items-center justify-between text-xs"
+                            >
+                              <div>
+                                <div className="font-semibold text-white">
+                                  {f.name} ({f.activeVersionLabel})
+                                </div>
+                                <div className="text-[11px] text-slate-400 mt-0.5">
+                                  {f.projectName} · {f.status} · Updated {f.updatedAt}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveFormulaId(f.id);
+                                  setActiveVersionLabel(f.activeVersionLabel);
+                                  setActiveNav('formula-lab');
+                                }}
+                                className="text-emerald-400 hover:text-emerald-300 font-medium whitespace-nowrap shrink-0"
+                              >
+                                Formulate →
+                              </button>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setActiveNav('formula-library')}
+                      onClick={() => setActiveNav('formula-lab')}
                       className="text-xs text-slate-400 hover:text-white text-left pt-2 border-t border-slate-800/80"
                     >
-                      View Full Formula Library →
+                      {formulas.length === 0
+                        ? 'Create First Formula →'
+                        : 'View Full Formula Library →'}
                     </button>
                   </div>
                 )}
 
-                {/* Widget 2: Aging / Maceration Checkpoints Due Today */}
+                {/* Widget 2: Aging / Maceration Checkpoints */}
                 {visibleWidgets.aging && (
                   <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 flex flex-col justify-between space-y-4">
                     <div>
@@ -1721,42 +2073,35 @@ export default function App() {
                         <span className="font-semibold text-white">
                           02. Aging & Maceration Checkpoints
                         </span>
-                        <span className="text-amber-400 font-mono-tabular">3 Due Today</span>
+                        <span className="text-amber-400 font-mono-tabular">
+                          {experiments.length} Logged
+                        </span>
                       </div>
                       <div className="space-y-2.5 text-xs">
-                        <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-white">Forest Study V5</span>
-                            <span className="font-mono-tabular text-amber-400">
-                              Day 7 Evaluation Due
-                            </span>
+                        {experiments.length === 0 ? (
+                          <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 text-slate-400">
+                            No aging checkpoints or maceration trials recorded yet.
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Check Oakmoss integration & Cedar dryness
-                          </p>
-                        </div>
-                        <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-white">White Floral V4</span>
-                            <span className="font-mono-tabular text-emerald-400">
-                              Day 14 Checkpoint
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Evaluate 18% Hedione solar jasmine radiance
-                          </p>
-                        </div>
-                        <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-white">Tea Experiment V3</span>
-                            <span className="font-mono-tabular text-emerald-400">
-                              Day 30 Maturation Ready
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Final 30-day Vetiver Haiti & Violet Leaf review
-                          </p>
-                        </div>
+                        ) : (
+                          experiments.slice(0, 3).map((exp) => (
+                            <div
+                              key={exp.id}
+                              className="p-3 rounded bg-[#0B0E14] border border-slate-800"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-white">
+                                  {exp.stageLabel} ({exp.formulaVersionLabel})
+                                </span>
+                                <span className="font-mono-tabular text-amber-400">
+                                  {exp.recordedAt}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                {exp.observation}
+                              </p>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                     <button
@@ -1777,28 +2122,33 @@ export default function App() {
                         <span className="font-semibold text-white">
                           03. Recent Version Lineage & Diffs
                         </span>
-                        <span className="font-mono-tabular">Forest Project</span>
+                        <span className="font-mono-tabular">
+                          {activeFormula ? activeFormula.projectName : 'No Formula'}
+                        </span>
                       </div>
                       <div className="space-y-2 text-xs">
                         {activeFormula ? (
-                          activeFormula.versions.slice(-3).reverse().map((v) => (
-                            <div
-                              key={v.id}
-                              className="p-3 rounded bg-[#0B0E14] border border-slate-800"
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono-tabular font-semibold text-emerald-400">
-                                  {activeFormula.name} — {v.versionLabel}
-                                </span>
-                                <span className="text-[11px] text-slate-400">
-                                  {v.status} · {v.createdAt}
-                                </span>
+                          activeFormula.versions
+                            .slice(-3)
+                            .reverse()
+                            .map((v) => (
+                              <div
+                                key={v.id}
+                                className="p-3 rounded bg-[#0B0E14] border border-slate-800"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono-tabular font-semibold text-emerald-400">
+                                    {activeFormula.name} — {v.versionLabel}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    {v.status} · {v.createdAt}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
+                                  {v.versionNotes}
+                                </p>
                               </div>
-                              <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
-                                {v.versionNotes}
-                              </p>
-                            </div>
-                          ))
+                            ))
                         ) : (
                           <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 text-slate-500 italic">
                             No active formula loaded.
@@ -1811,7 +2161,7 @@ export default function App() {
                       onClick={() => setActiveNav('formula-lab')}
                       className="text-xs text-slate-400 hover:text-white text-left pt-2 border-t border-slate-800/80"
                     >
-                      Compare V4 vs V5 in Formula Lab →
+                      Open Formula Lab →
                     </button>
                   </div>
                 )}
@@ -1825,37 +2175,43 @@ export default function App() {
                           05. Scent Memory & Recognition
                         </span>
                         <span className="font-mono-tabular text-emerald-400">
-                          4 Studied
+                          {scentMemories.length} Studied
                         </span>
                       </div>
                       <div className="space-y-2.5 text-xs">
-                        {scentMemories.slice(0, 4).map((mem) => {
-                          const mat = materials.find((m) => m.id === mem.materialId);
-                          const pct =
-                            mem.recognitionTrials > 0
-                              ? Math.round(
-                                  (mem.recognitionCorrect / mem.recognitionTrials) * 100
-                                )
-                              : 0;
-                          return (
-                            <div
-                              key={mem.id}
-                              className="flex items-center justify-between p-2.5 rounded bg-[#0B0E14] border border-slate-800"
-                            >
-                              <div>
-                                <div className="font-semibold text-white">
-                                  {mat?.name}
+                        {scentMemories.length === 0 ? (
+                          <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 text-slate-400">
+                            No scent memory cards studied yet.
+                          </div>
+                        ) : (
+                          scentMemories.slice(0, 4).map((mem) => {
+                            const mat = materials.find((m) => m.id === mem.materialId);
+                            const pct =
+                              mem.recognitionTrials > 0
+                                ? Math.round(
+                                    (mem.recognitionCorrect / mem.recognitionTrials) * 100
+                                  )
+                                : 0;
+                            return (
+                              <div
+                                key={mem.id}
+                                className="flex items-center justify-between p-2.5 rounded bg-[#0B0E14] border border-slate-800"
+                              >
+                                <div>
+                                  <div className="font-semibold text-white">
+                                    {mat?.name || `Material #${mem.materialId}`}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400">
+                                    {mem.myPerception.slice(0, 3).join(' · ')}
+                                  </div>
                                 </div>
-                                <div className="text-[11px] text-slate-400">
-                                  {mem.myPerception.slice(0, 3).join(' · ')}
-                                </div>
+                                <span className="font-mono-tabular font-semibold text-emerald-400">
+                                  {pct}%
+                                </span>
                               </div>
-                              <span className="font-mono-tabular font-semibold text-emerald-400">
-                                {pct}%
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
                     <button
@@ -1878,15 +2234,23 @@ export default function App() {
                           06. Olfactory Mentor Insight
                         </span>
                         <span className="text-[11px] font-mono-tabular text-emerald-400">
-                          High Confidence
+                          {bootstrapLoadState === 'ready'
+                            ? 'Catalog Ready'
+                            : shelfLoadState === 'ready'
+                            ? 'Ready'
+                            : 'Studio Mode'}
                         </span>
                       </div>
                       <div className="p-3.5 rounded bg-[#0B0E14] border border-slate-800 space-y-2 text-xs">
                         <div className="font-semibold text-white">
-                          Suggested Next Experiment for Forest Study V5:
+                          {activeFormula
+                            ? `Active Study: ${activeFormula.name} (${activeFormula.activeVersionLabel})`
+                            : 'Olfactory Mentor (Generic Mode)'}
                         </div>
                         <p className="text-slate-300 leading-relaxed">
-                          Your 1-hour blotter evaluation noted excessive woody dryness from Virginia Cedarwood (10%) and Cashmeran (4%). Try a 10 g trial reducing Cashmeran to 2.5% and increasing Helvetolide (+1.5%) for airy unsweetened softness.
+                          {activeFormula
+                            ? 'Open the Olfactory Mentor to run volatility balance diagnostics, chord harmony analysis, or interactive formulation coaching on your active formula.'
+                            : 'No formula is currently selected. You can still consult the Olfactory Mentor in generic mode or create your first formula in the Formula Lab.'}
                         </p>
                       </div>
                     </div>
@@ -1895,7 +2259,7 @@ export default function App() {
                       onClick={() => setActiveNav('mentor')}
                       className="text-xs text-emerald-400 hover:text-emerald-300 text-left pt-2 border-t border-slate-800/80"
                     >
-                      Open Mentor & Generate 3 Controlled Trials →
+                      Open Olfactory Mentor →
                     </button>
                   </div>
                 )}
@@ -1955,6 +2319,7 @@ export default function App() {
             <MaterialCatalogView
               mode={activeNav === 'raw-materials' ? 'materials' : 'accords'}
               materials={materials}
+              userShelf={userShelfItems}
               selectedMaterialId={selectedMaterialId}
               regulatoryLimits={regulatoryLimits}
               scentMemories={scentMemories}
@@ -1962,6 +2327,7 @@ export default function App() {
               accords={accords}
               formulas={formulas}
               educationalPromptsEnabled={educationalPrompts}
+              getAuthHeaders={async () => getAuthHeaders()}
               onSelectMaterial={(id) => setSelectedMaterialId(id)}
               onCreateMaterial={handleCreateMaterial}
               onCreateAccord={handleCreateAccord}
@@ -2063,7 +2429,7 @@ export default function App() {
                   ...it,
                   percentage: totalWeight > 0 ? (it.quantityGrams / totalWeight) * 100 : 0,
                 }));
-                handleSaveFormulaVersion(resolvedTarget, {
+                void handleSaveFormulaVersion(resolvedTarget, {
                   versionLabel: currentVer?.versionLabel || 'V1',
                   parentVersionId: currentVer?.parentVersionId ?? null,
                   status: 'Draft',
@@ -2170,7 +2536,7 @@ export default function App() {
                   ...it,
                   percentage: totalWeight > 0 ? (it.quantityGrams / totalWeight) * 100 : 0,
                 }));
-                handleSaveFormulaVersion(resolvedTarget, {
+                void handleSaveFormulaVersion(resolvedTarget, {
                   versionLabel: currentVer?.versionLabel || 'V1',
                   parentVersionId: currentVer?.parentVersionId ?? null,
                   status: 'Draft',
@@ -2200,6 +2566,7 @@ export default function App() {
               onAddToShelf={handleAddToShelf}
               onUpdateShelfItem={handleUpdateShelfItem}
               onRemoveFromShelf={handleRemoveFromShelf}
+              onLoadStarterOrgan={() => handleLoadStarterOrgan('starter_25')}
             />
             </TabErrorBoundary>
           )}
@@ -2259,6 +2626,7 @@ export default function App() {
                 setActiveFormulaId(id);
                 setActiveNav('formula-lab');
               }}
+              onOpenFormulaLab={() => setActiveNav('formula-lab')}
             />
             </TabErrorBoundary>
           )}
@@ -2289,6 +2657,12 @@ export default function App() {
               onAddExperiment={handleAddExperiment}
               onAddEvaluation={handleAddEvaluation}
               onUpdateScentMemory={handleSaveScentMemory}
+              onSaveScentMemory={handleSaveScentMemory}
+              onSelectFormula={(id) => {
+                setActiveFormulaId(id);
+              }}
+              onOpenFormulaLab={() => setActiveNav('formula-lab')}
+              onOpenCatalog={() => setActiveNav('raw-materials')}
             />
             </TabErrorBoundary>
           )}
@@ -2305,7 +2679,9 @@ export default function App() {
               materials={materials}
               evaluations={evaluations}
               accords={accords}
+              regulatoryLimits={regulatoryLimits}
               authHeaders={getAuthHeaders()}
+              getAuthHeaders={async () => getAuthHeaders()}
               onUpdateFormulaItems={handleUpdateFormulaLineItems}
               onNavigateToWheel={() => setActiveNav('olfactory-wheel')}
               onInspectMaterial={(id) => {

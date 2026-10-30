@@ -454,8 +454,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
             allergens: 'Imported regulatory limit',
             restrictions: `Max ${parsedMax}% in ${selectedIfraCategory}`,
             sourceDocument:
-              limitOverrideSource.trim() || 'Imported IFRA Regulatory Dossier',
-            documentVersion: 'IFRA 51st Amendment',
+              limitOverrideSource.trim() || 'User-entered override',
+            documentVersion: 'User-entered (unverified)',
             effectiveDate: new Date().toISOString().slice(0, 10),
             isDemoData: false,
             verificationStatus: 'USER_ENTERED_UNVERIFIED',
@@ -651,8 +651,6 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const handleCreateNewFormula = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFormulaName.trim()) return;
-    const defaultMat =
-      materials.find((m) => m.isOnShelf) || materials[0];
     await onSaveFormulaVersion(
       {
         name: newFormulaName.trim(),
@@ -671,24 +669,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         status: 'Draft',
         versionNotes: 'Initial V1 creation',
         maturationDays: 14,
-        items: defaultMat
-          ? [
-              {
-                id: `init-${Date.now()}`,
-                type: 'material',
-                materialId: defaultMat.id,
-                name: defaultMat.name,
-                quantityGrams: 10,
-                percentage: 100,
-                dilutionPercent: 100,
-                solvent: 'Neat',
-                activeMaterialPercent: 100,
-                supplier: defaultMat.supplier || 'Standard',
-                costPerGram: defaultMat.costPerGram ?? 0.42,
-                notes: 'Opening note',
-              },
-            ]
-          : [],
+        items: [],
       }
     );
     setShowNewFormulaModal(false);
@@ -2526,6 +2507,13 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/70 text-xs">
+            {metrics.items.length === 0 && (
+              <tr data-testid="empty-formula-items-row">
+                <td colSpan={9} className="py-6 px-4 text-center text-slate-400 text-xs">
+                  No ingredients added yet — select a raw material from My Shelf or the Catalog below to begin composing.
+                </td>
+              </tr>
+            )}
             {metrics.items.map((item, idx) => {
               const costLine = realTimeCostSummary.lines.find(
                 (c) => c.lineId === item.id
@@ -3229,7 +3217,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                                   : 'text-slate-300 text-[10px]'
                               }
                             >
-                              EU: {ev.euComplianceStatus || 'Pass'}
+                              EU: {ev.euComplianceStatus || 'LOOKUP_REQUIRED'}
                             </span>
                           </div>
                         </td>
@@ -3248,7 +3236,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     Constituent-Level Allergen Aggregation (Direct Materials + Nested Accords · Exposure: {safetyReport.exposureType})
                   </span>
                   <span className="text-[11px] font-mono-tabular text-slate-400">
-                    Declaration Threshold: {safetyReport.exposureType === 'RINSE_OFF' ? '0.010% (Rinse-Off)' : safetyReport.exposureType === 'LEAVE_ON' ? '0.001% (Leave-On)' : 'Indeterminate Exposure'}
+                    Exposure Basis: {safetyReport.exposureType === 'RINSE_OFF' ? 'Rinse-Off' : safetyReport.exposureType === 'LEAVE_ON' ? 'Leave-On' : 'Indeterminate Exposure'}
                   </span>
                 </div>
                 <div className="overflow-x-auto">

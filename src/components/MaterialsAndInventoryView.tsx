@@ -47,7 +47,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 
-interface MaterialsAndInventoryViewProps {
+export interface MaterialsAndInventoryViewProps {
   mode: 'materials' | 'accords';
   materials: RawMaterial[];
   shelfMaterials?: RawMaterial[];
@@ -56,7 +56,9 @@ interface MaterialsAndInventoryViewProps {
   scentMemories: ScentMemoryRecord[];
   usageReviews: MaterialUsageReview[];
   catalogTotal?: number;
+  catalogTotalCount?: number;
   catalogHasMore?: boolean;
+  isLoadingMoreCatalog?: boolean;
   catalogLoadState?: LoadState;
   catalogError?: string | null;
   shelfLoadState?: LoadState;
@@ -64,7 +66,7 @@ interface MaterialsAndInventoryViewProps {
     q: string;
     family: string;
     origin: string;
-    pyramidCode: string;
+    pyramidCode: NonNullable<RawMaterial['pyramidUiCode']> | 'ALL';
   }) => void;
   onLoadMoreCatalog?: () => void;
   onRetryCatalog?: () => void;
@@ -137,7 +139,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   scentMemories,
   usageReviews,
   catalogTotal,
+  catalogTotalCount,
   catalogHasMore = false,
+  isLoadingMoreCatalog = false,
   catalogLoadState = 'ready',
   catalogError = null,
   shelfLoadState = 'ready',
@@ -166,7 +170,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const [searchQuery, setSearchQuery] = useState('');
   const [familyFilter, setFamilyFilter] = useState('All');
   const [originFilter, setOriginFilter] = useState('All');
-  const [pyramidFilter, setPyramidFilter] = useState('All');
+  const [pyramidFilter, setPyramidFilter] = useState<
+    NonNullable<RawMaterial['pyramidUiCode']> | 'ALL'
+  >('ALL');
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
   const [showAddAccordModal, setShowAddAccordModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -260,7 +266,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const handleToggleShelf = (matOrId: RawMaterial | number) => {
     const mat =
       typeof matOrId === 'number'
-        ? materials.find((m) => m.id === matOrId)
+        ? materials.find((m) => m.id === matOrId) ||
+          shelfMaterials?.find((m) => m.id === matOrId)
         : matOrId;
     if (!mat) return;
     const currentlyOnShelf = isMaterialOnShelf(mat);
@@ -280,7 +287,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   };
 
   const handleToggleWorkbench = (matId: number) => {
-    const targetMat = materials.find((m) => m.id === matId);
+    const targetMat =
+      materials.find((m) => m.id === matId) ||
+      shelfMaterials?.find((m) => m.id === matId);
     if (!targetMat) return;
     const onShelf = isMaterialOnShelf(targetMat);
     const onWorkbench = isMaterialOnWorkbench(targetMat);
@@ -930,11 +939,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                   currentPercent={null}
                   ifraLimitPercent={regLimit?.maxAllowedPercent ?? null}
                   euLimitPercent={regLimit?.euCosmeticLimitPercent ?? mat.euCosmeticLimitPercent ?? null}
-                  ifraCategory="Cat 4 (Fine Fragrance)"
-                  euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
+                  ifraCategory={regLimit?.ifraCategory}
+                  euRegulationReference={regLimit?.euRegulationReference}
                   isEuAllergen={Boolean(regLimit?.euAllergenDeclarable || mat.euAllergenDeclarable)}
-                  leaveOnThresholdPct={regLimit?.euLabelThresholdLeaveOnPct ?? 0.001}
-                  rinseOffThresholdPct={regLimit?.euLabelThresholdRinseOffPct ?? 0.01}
+                  leaveOnThresholdPct={regLimit?.euLabelThresholdLeaveOnPct ?? null}
+                  rinseOffThresholdPct={regLimit?.euLabelThresholdRinseOffPct ?? null}
                   verificationStatus={
                     regLimit?.verificationStatus ||
                     (regLimit?.maxAllowedPercent === null || regLimit?.maxAllowedPercent === undefined
@@ -1032,7 +1041,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const [cardInsertDosage, setCardInsertDosage] = useState<Record<number, number>>({});
 
   const selectedMaterial =
-    materials.find((m) => m.id === selectedMaterialId) || materials[0];
+    materials.find((m) => m.id === selectedMaterialId) ||
+    shelfMaterials?.find((m) => m.id === selectedMaterialId) ||
+    materials[0] ||
+    shelfMaterials?.[0] ||
+    null;
 
   const selectedLimit = regulatoryLimits.find(
     (r) => r.materialId === selectedMaterial?.id
@@ -2637,7 +2650,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   };
 
   // 2. RAW MATERIALS PALETTE: MY WORKBENCH vs MY SHELF vs CATALOG LIBRARY
-  const activeShelfSource = shelfMaterials ?? materials.filter((m) => isMaterialOnShelf(m));
+  const activeShelfSource = (shelfMaterials ?? materials).filter((m) =>
+    isMaterialOnShelf(m)
+  );
   const sourceList =
     paletteViewTab === 'catalog' ? materials : activeShelfSource;
 
@@ -2650,8 +2665,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     if (paletteViewTab === 'shelf' && !isOnShelf) {
       return false;
     }
-    // When onCatalogQueryChange is wired and paletteViewTab === 'catalog',
-    // server-side query already filters /api/catalog, though client filter acts as a consistent guard
+    if (paletteViewTab === 'catalog' && onCatalogQueryChange) {
+      // Server-driven catalog query already filters by q, family, origin, and pyramidCode
+      return true;
+    }
     const matchFam =
       familyFilter === 'All' ||
       m.primaryFamily.toLowerCase() === familyFilter.toLowerCase();
@@ -2660,7 +2677,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       m.naturalOrSynthetic.toLowerCase() === originFilter.toLowerCase();
     const pyramidMeta = resolveEffectiveMaterialPyramidMetadata(m);
     const matchPyramid =
-      pyramidFilter === 'All' || pyramidMeta.uiCode === pyramidFilter;
+      pyramidFilter === 'ALL' || pyramidMeta.uiCode === pyramidFilter;
     const q = searchQuery.toLowerCase().trim();
     const synonyms = normalizeMaterialSynonyms(m.alsoCalled, m.aliases);
     const matchQ =
@@ -2671,13 +2688,14 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       (m.inciName && m.inciName.toLowerCase().includes(q)) ||
       m.casNumber.toLowerCase().includes(q) ||
       m.primaryFamily.toLowerCase().includes(q) ||
-      m.facets.some((f) => f.toLowerCase().includes(q));
+      m.facets.some((f) => f.toLowerCase().includes(q)) ||
+      (m.descriptiveNotes && m.descriptiveNotes.toLowerCase().includes(q));
     return matchFam && matchOrig && matchPyramid && matchQ;
   });
 
   const workbenchCount = activeShelfSource.filter((m) => isMaterialOnWorkbench(m)).length;
   const shelfCount = activeShelfSource.length;
-  const effectiveCatalogTotal = catalogTotal ?? materials.length;
+  const effectiveCatalogTotal = catalogTotal ?? catalogTotalCount ?? materials.length;
 
   return (
     <div className="space-y-6">
@@ -2739,7 +2757,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
 
           {/* Search & Multi-Facet Filters */}
           <MaterialFilters
-            searchQuery={searchQuery}
+            search={searchQuery}
             onSearchChange={setSearchQuery}
             familyFilter={familyFilter}
             onFamilyChange={setFamilyFilter}
@@ -2747,6 +2765,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             onOriginChange={setOriginFilter}
             pyramidFilter={pyramidFilter}
             onPyramidChange={setPyramidFilter}
+            totalMatchingCount={filteredMaterials.length}
+            totalCatalogCount={effectiveCatalogTotal}
           />
 
           {/* Server Pagination Status Header for Catalog */}
@@ -2985,12 +3005,12 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                   <button
                     type="button"
                     data-testid="catalog-load-more-btn"
-                    disabled={catalogLoadState === 'loading'}
+                    disabled={catalogLoadState === 'loading' || isLoadingMoreCatalog}
                     onClick={onLoadMoreCatalog}
                     className="w-full py-2 px-3 rounded-lg bg-[#0B0E14] hover:bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center justify-center gap-2"
                   >
                     <span>
-                      {catalogLoadState === 'loading'
+                      {catalogLoadState === 'loading' || isLoadingMoreCatalog
                         ? 'Loading more catalog materials...'
                         : `Load More Materials (${Math.max(
                             0,
@@ -3474,7 +3494,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-white">Authoritative IFRA Status: </span>
                     <span className="text-slate-300">
-                      {selectedLimit?.amendmentStatus || 'IFRA 51st Amendment'} ·{' '}
+                      {selectedLimit?.amendmentStatus || 'Amendment status: LOOKUP_REQUIRED'} ·{' '}
                     </span>
                     {selectedLimit?.maxAllowedPercent !== null && selectedLimit?.maxAllowedPercent !== undefined ? (
                       <span className="text-emerald-400 font-mono-tabular font-medium">
@@ -3504,19 +3524,20 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             {/* TAB 2: DEDICATED REGULATORY COMPLIANCE SUB-VIEW */}
             {materialSubTab === 'regulatory' && (
               <div className="space-y-5">
-                {/* 1. Substance Identification & IFRA 51 Amendment Header */}
+                {/* 1. Substance Identification & IFRA Amendment Header */}
                 <div className="rounded-lg bg-[#111621] border border-slate-800 p-5 space-y-4 overflow-hidden">
                   <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4 border-b border-slate-800 pb-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
                           className={`text-xs font-mono-tabular font-medium ${
-                            selectedLimit?.maxAllowedPercent === null
+                            selectedLimit?.maxAllowedPercent === null ||
+                            selectedLimit?.maxAllowedPercent === undefined
                               ? 'text-slate-400'
                               : 'text-emerald-400'
                           }`}
                         >
-                          {selectedLimit?.amendmentStatus || 'IFRA 51st Amendment (2023)'}
+                          {selectedLimit?.amendmentStatus || 'Amendment status: LOOKUP_REQUIRED'}
                         </span>
                         <span className="text-slate-600">·</span>
                         <span
@@ -3527,21 +3548,23 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                               ? 'bg-blue-950/60 border border-blue-700/60 text-blue-300'
                               : selectedLimit?.restrictionType === 'PROHIBITION'
                               ? 'bg-rose-600 border border-rose-400 text-white font-bold'
-                              : selectedLimit?.maxAllowedPercent === null
+                              : selectedLimit?.maxAllowedPercent === null ||
+                                selectedLimit?.maxAllowedPercent === undefined
                               ? 'bg-slate-700/90 border border-slate-500 text-slate-100 font-semibold'
                               : 'bg-emerald-950/60 border border-emerald-700/60 text-emerald-300'
                           }`}
                         >
-                          {selectedLimit?.maxAllowedPercent === null
+                          {selectedLimit?.maxAllowedPercent === null ||
+                          selectedLimit?.maxAllowedPercent === undefined
                             ? 'LOOKUP_REQUIRED'
-                            : selectedLimit?.restrictionType || 'CONFORMS'}
+                            : selectedLimit?.restrictionType || 'LOOKUP_REQUIRED'}
                         </span>
                       </div>
                       <h3 className="text-lg font-semibold text-white mt-1 break-words">
                         Regulatory Compliance Dossier: {selectedMaterial.name}
                       </h3>
                       <p className="text-xs text-slate-400 mt-0.5 break-words">
-                        CAS: {selectedMaterial.casNumber} · EC/EINECS: {selectedLimit?.ecNumber || 'Listed'} · INCI: {selectedMaterial.inciName} · Attribution: ScenTree CC BY-NC 4.0
+                        CAS: {selectedMaterial.casNumber} · EC/EINECS: {selectedLimit?.ecNumber || 'LOOKUP_REQUIRED'} · INCI: {selectedMaterial.inciName} · Attribution: ScenTree CC BY-NC 4.0
                       </p>
                     </div>
 
@@ -3557,22 +3580,22 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        {selectedLimit?.effectiveDate ? `Effective: ${selectedLimit.effectiveDate}` : 'Source: Official Dossier'}
+                        {selectedLimit?.effectiveDate ? `Effective: ${selectedLimit.effectiveDate}` : 'Effective Date: LOOKUP_REQUIRED'}
                       </div>
                     </div>
                   </div>
 
-                  {/* Dual Regulatory Reference View: IFRA 51 + EU Cosmetics Regulation (EC 1223/2009) */}
+                  {/* Dual Regulatory Reference View: IFRA + EU Cosmetics Regulation */}
                   <DualRegulatorySlider
                     materialName={selectedMaterial.name}
                     currentPercent={null}
                     ifraLimitPercent={selectedLimit?.maxAllowedPercent ?? null}
                     euLimitPercent={selectedLimit?.euCosmeticLimitPercent ?? selectedMaterial.euCosmeticLimitPercent ?? null}
-                    ifraCategory="Cat 4 (Fine Fragrance)"
-                    euRegulationReference="EU Cosmetics Reg. (EC 1223/2009 Annex III)"
+                    ifraCategory={selectedLimit?.ifraCategory}
+                    euRegulationReference={selectedLimit?.euRegulationReference}
                     isEuAllergen={Boolean(selectedLimit?.euAllergenDeclarable || selectedMaterial.euAllergenDeclarable)}
-                    leaveOnThresholdPct={selectedLimit?.euLabelThresholdLeaveOnPct ?? 0.001}
-                    rinseOffThresholdPct={selectedLimit?.euLabelThresholdRinseOffPct ?? 0.01}
+                    leaveOnThresholdPct={selectedLimit?.euLabelThresholdLeaveOnPct ?? null}
+                    rinseOffThresholdPct={selectedLimit?.euLabelThresholdRinseOffPct ?? null}
                     verificationStatus={
                       selectedLimit?.verificationStatus ||
                       (selectedLimit?.maxAllowedPercent === null || selectedLimit?.maxAllowedPercent === undefined
@@ -3591,7 +3614,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         Primary Toxicological Hazard / Rationale:
                       </span>
                       <p className="text-slate-200 leading-relaxed">
-                        {selectedLimit?.primaryHazard || 'Skin Sensitization & Phototoxic Evaluation'}
+                        {selectedLimit?.primaryHazard || 'LOOKUP_REQUIRED — No hazard record in database'}
                       </p>
                     </div>
                     <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 space-y-1">
@@ -3599,7 +3622,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         Specific IFRA Restriction / Specification:
                       </span>
                       <p className="text-slate-200 leading-relaxed">
-                        {selectedLimit?.restrictions || 'No quantitative restriction recorded in Category 4.'}
+                        {selectedLimit?.restrictions || 'LOOKUP_REQUIRED — Manual verification required'}
                       </p>
                     </div>
                   </div>
@@ -3615,14 +3638,14 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     <div className="p-3 rounded bg-sky-950/30 border border-sky-800/60 flex items-start gap-2 text-xs text-sky-200">
                       <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                       <span>
-                        <strong>Partially verified:</strong> Sourced from {selectedLimit.sourceDocument}. Confirm all category-specific rules and commercial lot CoA before dermal compounding.
+                        <strong>Partially verified:</strong> Sourced from {selectedLimit.sourceDocument || 'LOOKUP_REQUIRED'}. Confirm all category-specific rules and commercial lot CoA before dermal compounding.
                       </span>
                     </div>
                   ) : selectedLimit?.verificationStatus === 'VERIFIED_OFFICIAL' ? (
                     <div className="p-3 rounded bg-emerald-950/30 border border-emerald-800/60 flex items-start gap-2 text-xs text-emerald-200">
                       <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                       <span>
-                        <strong>Official source verified:</strong> {selectedLimit.sourceDocument}.
+                        <strong>Official source verified:</strong> {selectedLimit.sourceDocument || 'LOOKUP_REQUIRED'}.
                       </span>
                     </div>
                   ) : selectedLimit?.verificationStatus === 'USER_ENTERED_UNVERIFIED' ? (
@@ -3634,7 +3657,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   ) : null}
 
-                  {selectedLimit?.maxAllowedPercent === null && (
+                  {(selectedLimit?.maxAllowedPercent === null || selectedLimit?.maxAllowedPercent === undefined) && (
                     <div className="p-4 rounded bg-slate-900/90 border border-slate-600 flex items-start gap-3 text-xs text-slate-200">
                       <AlertOctagon className="w-5 h-5 text-slate-300 shrink-0 mt-0.5" />
                       <div className="space-y-1">
@@ -3655,7 +3678,6 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 {/* On-demand Canonical Regulatory Dossier (/api/catalog/:materialId/regulatory) */}
                 <RegulatoryDossier
                   materialId={selectedMaterial.id}
-                  materialName={selectedMaterial.name}
                 />
               </div>
             )}
