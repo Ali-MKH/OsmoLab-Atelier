@@ -11,152 +11,173 @@ import type {
 } from './types.ts';
 
 export const OLFACTORY_WHEEL_FAMILIES: OlfactoryFamilyDef[] = [
-  // 1. FLORAL ASPECT (Clockwise from 9 o'clock: Floral -> Soft Floral -> Floral Amber)
   {
     id: 'floral',
     name: 'Floral',
     macroFamily: 'Floral',
-    color: '#E04338',
-    description: 'Fresh-cut blossoms, radiant jasmine, Damascus rose, tuberose, and dewy white floral bouquets.',
-    academicNotes: 'The foundational heart family of perfumery on the Michael Edwards wheel, spanning single-flower soliflores to lush abstract bouquets.',
-    keyMaterials: ['Hedione', 'Rose Absolute', 'Jasmine Sambac', 'Linalool', 'Geraniol'],
-    subFacets: ['Transparent Floral', 'Jasmine', 'Rose', 'White Floral', 'Tuberose'],
+    color: '#E11D48',
+    description:
+      'Radiant fresh cut blossoms—rose, jasmine, tuberose, ylang-ylang, and lily of the valley.',
+    academicNotes:
+      'Anchored by phenyl ethyl alcohol, cis-jasmone, benzyl acetate, and Hedione. Forms the classic heart of fine perfumery.',
+    keyMaterials: ['Hedione', 'Jasmine Sambac Absolute', 'Rose Otto', 'Phenylethyl Alcohol'],
+    subFacets: ['Soliflore', 'White Floral', 'Rose', 'Transparent Floral', 'Narcotic'],
   },
   {
     id: 'soft-floral',
     name: 'Soft Floral',
     macroFamily: 'Floral',
-    color: '#EA6E99',
-    description: 'Sparkling aliphatic aldehydes, powdery iris root, heliotrope, and creamy clean musks.',
-    academicNotes: 'Pioneered by Chanel No. 5 (1921); blends effervescent aldehydes with abstract florals, powdery orris, and enveloping musk.',
-    keyMaterials: ['Aldehyde C-12 MNA', 'Alpha-Isomethyl Ionone', 'Helvetolide', 'Orris Butter', 'Ambrettolide'],
-    subFacets: ['Aldehydic', 'Powdery Iris', 'Creamy Musk', 'Heliotrope', 'Soapy-Clean'],
+    color: '#F472B6',
+    description:
+      'Sparkling aldehydes, iris butter, heliotrope, and powdery-musky petal veils.',
+    academicNotes:
+      'Combines aliphatic aldehydes (C-10, C-11, C-12) with ionones, orris, and clean macrocyclic musks.',
+    keyMaterials: ['Aldehyde C-12 MNA', 'Orris Concrete', 'Heliotropin', 'Alpha-Isomethyl Ionone'],
+    subFacets: ['Aldehydic', 'Powdery', 'Iris / Violet', 'Soft Musky', 'Cosmetic'],
   },
   {
     id: 'floral-amber',
     name: 'Floral Amber',
     macroFamily: 'Floral',
-    color: '#F30086',
-    description: 'Orange blossom absolute, solar ylang-ylang, sweet spice-kissed petals, and warm ambrette.',
-    academicNotes: 'The luminous bridge between Floral and Ambery families; marries narcotic white blossoms with warm resinous and vanillic undertones.',
-    keyMaterials: ['Orange Blossom Abs', 'Ylang-Ylang Extra', 'Benzyl Salicylate', 'Cashmeran', 'Heliotropin'],
-    subFacets: ['Orange Blossom', 'Solar Floral', 'Spiced Petal', 'Ylang-Amber', 'Velvety Musk'],
+    color: '#FB7185',
+    description:
+      'Orange blossom, solar salicylates, and sweet spiced florals resting on warm amber.',
+    academicNotes:
+      'Bridges narcotic white florals (neroli, orange blossom, frangipani) into benzoin, vanillin, and benzyl salicylate.',
+    keyMaterials: ['Orange Blossom Absolute', 'Benzyl Salicylate', 'Ylang-Ylang Extra', 'Aurantiol'],
+    subFacets: ['Orange Blossom', 'Solar Floral', 'Spiced Blossom', 'Floriental', 'Nectar'],
   },
-
-  // 2. AMBERY ASPECT (12 o'clock / Top-Right: Soft Amber -> Amber -> Woody Amber)
   {
     id: 'soft-amber',
     name: 'Soft Amber',
     macroFamily: 'Amber',
-    color: '#BD1B78',
-    description: 'Warm incense smoke, cardamom, pink pepper, myrrh resin, and velvety spiced benzoin.',
-    academicNotes: 'Sits at the 12 o’clock apex of the Michael Edwards wheel; blends gentle balsamic resins with aromatic incense and warm spices.',
-    keyMaterials: ['Cardamom Oil', 'Pink Pepper CO2', 'Olibanum Resinoid', 'Benzoin Siam', 'Eugenol'],
-    subFacets: ['Incense', 'Cardamom Spice', 'Myrrh', 'Warm Clove', 'Velvet Resin'],
+    color: '#F59E0B',
+    description:
+      'Translucent incense, warm skin resins, benzoin, and delicate aromatic spices.',
+    academicNotes:
+      'Built around olibanum, myrrh, Siam benzoin, coumarin, and velvety musks for a diffusive, non-cloying warmth.',
+    keyMaterials: ['Olibanum Resinoid', 'Benzoin Siam', 'Cardamom EO', 'Ambrettolide'],
+    subFacets: ['Incense', 'Warm Spicy', 'Skin Amber', 'Balsamic Veil', 'Resinous'],
   },
   {
     id: 'amber',
     name: 'Amber',
     macroFamily: 'Amber',
-    color: '#8E0429',
-    description: 'Crystalline ambroxan, mineral ambergris, rich labdanum cistus, vanilla bean, and golden balsams.',
-    academicNotes: 'The opulent core of the Ambery family (historically Oriental), built on authentic labdanum, benzoin, vanilla, and ambergris accords.',
-    keyMaterials: ['Ambroxan', 'Labdanum Absolute', 'Vanillin', 'Cistus Oil', 'Opoponax'],
-    subFacets: ['Crystalline', 'Ambergris-Mineral', 'Labdanum', 'Vanilla Balsam', 'Resinous'],
+    color: '#EA580C',
+    description:
+      'Rich labdanum, vanilla bean,Peru balsam, and classic golden amber accords.',
+    academicNotes:
+      'The classical Ambre 83 chord—labdanum, vanillin, and patchouli/benzoin—delivering deep tenacity and opulence.',
+    keyMaterials: ['Labdanum Absolute', 'Vanillin', 'Ambroxan', 'Cistus EO'],
+    subFacets: ['Labdanum', 'Vanilla', 'Ambergris', 'Balsamic', 'Golden Resin'],
   },
   {
     id: 'woody-amber',
     name: 'Woody Amber',
     macroFamily: 'Amber',
-    color: '#BD5C18',
-    description: 'Dark patchouli heart, roasted tonka bean, Mysore sandalwood, oud, and praline gourmand warmth.',
-    academicNotes: 'Transitions the Ambery family into Woody territory by fusing rich balsams and gourmand tonka with patchouli and noble woods.',
-    keyMaterials: ['Patchouli Oil Heart', 'Tonka Bean Abs', 'Ethyl Vanillin', 'Javanol', 'Cacao Resinoide'],
-    subFacets: ['Patchouli-Amber', 'Tonka Gourmand', 'Sandalwood-Resin', 'Oud Accord', 'Praline'],
+    color: '#D97706',
+    description:
+      'Dark patchouli, sandalwood, tonka bean, cacao, and modern amber-wood molecules.',
+    academicNotes:
+      'Marries sesquiterpene woods (patchouli, guaiac, cedar) with gourmand lactones, maltol, and radiant amber-woods.',
+    keyMaterials: ['Patchouli Oil', 'Tonka Bean Absolute', 'Iso E Super', 'Timberol'],
+    subFacets: ['Patchouli', 'Gourmand', 'Tonka', 'Amber-Wood', 'Dark Sweet'],
   },
-
-  // 3. WOODY ASPECT (3 o'clock / Bottom-Right: Woods -> Mossy Woods -> Dry Woods)
   {
     id: 'woods',
     name: 'Woods',
     macroFamily: 'Woody',
-    color: '#AD7B3B',
-    description: 'Pencil-shaving Virginia cedarwood, creamy sandalwood, translucent Iso E Super, and Haitian vetiver.',
-    academicNotes: 'The architectural backbone of modern perfumery, celebrating aromatic cedar, vetiver roots, guaiacwood, and velvety sandalwood.',
-    keyMaterials: ['Iso E Super', 'Virginia Cedarwood EO', 'Vetiver Haiti EO', 'Sandalwood', 'Cypress EO'],
-    subFacets: ['Dry Cedar', 'Vetiver Root', 'Velvety Sandalwood', 'Coniferous', 'Noble Woods'],
+    color: '#A16207',
+    description:
+      'Pencil-shavings cedarwood, creamy Mysore-style sandalwood, and earthy vetiver roots.',
+    academicNotes:
+      'Structural backbone of modern perfumery using Virginia/Atlas cedar, santalols, vetiverol, and Iso E Super.',
+    keyMaterials: ['Cedarwood Virginia', 'Vetiver Haiti', 'Javanol', 'Iso E Super'],
+    subFacets: ['Cedar', 'Sandalwood', 'Vetiver', 'Creamy Wood', 'Radiant Wood'],
   },
   {
     id: 'mossy-woods',
     name: 'Mossy Woods',
     macroFamily: 'Woody',
-    color: '#2B6B57',
-    description: 'Oakmoss absolute, tree lichen, damp forest floor petrichor, patchouli leaf, and classic chypre depth.',
-    academicNotes: 'Home of the classical Chypre family (Coty 1917), balancing bright bergamot and floral hearts over earthy oakmoss and labdanum.',
-    keyMaterials: ['Oakmoss Absolute 10%', 'Evermyl', 'Vetiver Haiti EO', 'Terrasol', 'Patchouli Oil Heart'],
-    subFacets: ['Oakmoss Chypre', 'Lichen', 'Petrichor Humus', 'Undergrowth', 'Forest Bark'],
+    color: '#15803D',
+    description:
+      'Classic Chypre architecture—oakmoss, tree moss, bergamot, and damp forest floor.',
+    academicNotes:
+      'Structured on the contrast between sparkling bergamot top notes, floral-labdanum heart, and Evernia prunastri (oakmoss) base.',
+    keyMaterials: ['Oakmoss Absolute (Low Atranol)', 'Evernyl (Veramoss)', 'Patchouli Fraction', 'Bergamot FCF'],
+    subFacets: ['Chypre', 'Oakmoss', 'Forest Floor', 'Lichen', 'Earthy Humus'],
   },
   {
     id: 'dry-woods',
     name: 'Dry Woods',
     macroFamily: 'Woody',
-    color: '#7D7B57',
-    description: 'Smoky birch tar leather, supple suede, sun-cured tobacco leaf, dry cedar smoke, and cade oil.',
-    academicNotes: 'Encompasses Leather and smoky Cuir de Russie creations; pairs bone-dry smoldering woods and birch tar with austere herbal aromatics.',
-    keyMaterials: ['Birch Tar Oil', 'Suederal', 'Isobutyl Quinoline', 'Tobacco Absolute', 'Coumarin'],
-    subFacets: ['Smoky Leather', 'Suede', 'Birch Tar', 'Cured Tobacco', 'Dry Smoke'],
+    color: '#78350F',
+    description:
+      'Smoky birch tar, cade, cured leather, suede, tobacco leaf, and scorched vetiver.',
+    academicNotes:
+      'Uses isobutyl quinoline, birch tar, castoreum replacers, Safraleine, and Cashmeran to evoke smoke, saddle leather, and arid timber.',
+    keyMaterials: ['Isobutyl Quinoline', 'Birch Tar Rectified', 'Cashmeran', 'Suederal'],
+    subFacets: ['Leather', 'Smoky', 'Tobacco', 'Suede', 'Arid Bark'],
   },
-
-  // 4. FRESH ASPECT (6 o'clock to 9 o'clock: Aromatic -> Citrus -> Water -> Green -> Fruity)
   {
     id: 'aromatic',
     name: 'Aromatic',
     macroFamily: 'Fresh',
-    color: '#4F4984',
-    description: 'Provençal lavender, clary sage, rosemary, cool mint, and classic barbershop fougère accords.',
-    academicNotes: 'Positioned between Dry Woods and Citrus; the home of the Fougère family (Houbigant 1882), blending lavender herbs with coumarin and oakmoss.',
-    keyMaterials: ['Lavender Maillette', 'Clary Sage EO', 'Rosemary Oil', 'Linalyl Acetate', 'Coumarin'],
-    subFacets: ['Lavender Fougère', 'Clary Sage', 'Rosemary', 'Herbal-Camphor', 'Crushed Thyme'],
+    color: '#4F46E5',
+    description:
+      'Fougère herbs—French lavender, clary sage, rosemary, thyme, mint, and coumarin.',
+    academicNotes:
+      'Classical Fougère skeleton pairing herbaceous lavender and linalyl acetate with geranium, oakmoss, and coumarin.',
+    keyMaterials: ['Lavender Maillette', 'Clary Sage Absolute', 'Rosemary Cineole', 'Coumarin'],
+    subFacets: ['Fougère', 'Lavender', 'Herbal', 'Camphoraceous', 'Minty'],
   },
   {
     id: 'citrus',
     name: 'Citrus',
     macroFamily: 'Fresh',
-    color: '#E6CD00',
-    description: 'Cold-pressed Calabrian bergamot, Sicilian lemon zest, mandarin, bitter petitgrain, and neroli.',
-    academicNotes: 'Anchored at 6 o’clock opposite Soft Amber; the historic foundation of Eau de Cologne (1709), bringing immediate radiant lift.',
-    keyMaterials: ['Bergamot FCF', 'Lemon Oil SFX', 'Mandarin Yellow', 'Petitgrain Paraguay', 'Neroli'],
-    subFacets: ['Bergamot', 'Zesty Lemon', 'Juicy Mandarin', 'Bitter Peel', 'Sparkling Cologne'],
+    color: '#EAB308',
+    description:
+      'Effervescent cold-pressed hesperidic peels—bergamot, lemon, mandarin, yuzu, and grapefruit.',
+    academicNotes:
+      'High-volatility monoterpenes (limonene, bergamotene, citral) and petitgrain/neroli providing immediate lift and sparkle.',
+    keyMaterials: ['Bergamot FCF', 'Lemon Sicily Cold-Pressed', 'Mandarin Red', 'Nootkatone'],
+    subFacets: ['Bergamot', 'Hesperidic', 'Bitter Peel', 'Petitgrain', 'Zesty'],
   },
   {
     id: 'water',
     name: 'Water',
     macroFamily: 'Fresh',
-    color: '#008AC5',
-    description: 'Crisp sea spray, coastal ozone breeze, calone aquatic notes, wet slate mineral rain, and lotus.',
-    academicNotes: 'Encompasses marine, aquatic, and ozonic creations pioneered with Calone 1951, evoking ocean air, rain-washed stone, and dewy transparency.',
-    keyMaterials: ['Calone 1951', 'Ultrazur', 'Floralozone', 'Algenone', 'Ambroxan Mineral Facet'],
-    subFacets: ['Sea Spray', 'Ozonic Breeze', 'Aquatic Calone', 'Wet Mineral Slate', 'Saline Air'],
+    color: '#0284C7',
+    description:
+      'Sea spray, wet stone, petrichor, ozone, and crisp aquatic breeze.',
+    academicNotes:
+      'Driven by Calone (methylbenzodioxepinone), Helional, floralozone, and mineral seaweed/ambroxan accords.',
+    keyMaterials: ['Calone 1951', 'Helional', 'Geosmin (0.1%)', 'Seaweed Absolute'],
+    subFacets: ['Marine', 'Petrichor', 'Ozonic', 'Wet Stone', 'Mineral'],
   },
   {
     id: 'green',
     name: 'Green',
     macroFamily: 'Fresh',
-    color: '#6FB75D',
-    description: 'Snapped galbanum stems, crisp cis-3-hexenol cut grass, dewy violet leaf, and crushed fig leaves.',
-    academicNotes: 'Captures raw botanical chlorophyll, snapped green stems, and morning dew—bridging fresh aquatic notes toward ripe orchard fruits.',
-    keyMaterials: ['Cis-3-Hexenol 10%', 'Violet Leaf Absolute 10%', 'Galbanum Oil 10%', 'Triplal', 'Stemone'],
-    subFacets: ['Cut Grass', 'Violet Leaf', 'Galbanum Stem', 'Crushed Foliage', 'Green Fig Leaf'],
+    color: '#10B981',
+    description:
+      'Crushed stems, galbanum resin, violet leaf, fig leaf, and freshly mown grass.',
+    academicNotes:
+      'Powered by cis-3-hexenol, Triplal, galbanum pyrazines, and methyl octine carbonate (folione) for razor-sharp botanical realism.',
+    keyMaterials: ['Galbanum EO', 'Cis-3-Hexenol', 'Violet Leaf Absolute', 'Stemone'],
+    subFacets: ['Crushed Leaf', 'Galbanum', 'Violet Leaf', 'Cut Grass', 'Fig Leaf'],
   },
   {
     id: 'fruity',
     name: 'Fruity',
     macroFamily: 'Fresh',
-    color: '#ED7D1B',
-    description: 'Crisp pear ester, blackcurrant cassis bud, velvety peach skin, green apple, and ripe fig nectar.',
-    academicNotes: 'Completes the circle at 9 o’clock right below Floral; juicy non-citrus orchard fruits and lactones transition Fresh seamlessly back into Floral.',
-    keyMaterials: ['Cassis Base 345B', 'Gamma-Octalactone', 'Allyl Amyl Glycolate', 'Damascenone', 'Pear Ester'],
-    subFacets: ['Blackcurrant Cassis', 'Pear Ester', 'Peach Lactone', 'Ripe Fig', 'Orchard Nectar'],
+    color: '#EC4899',
+    description:
+      'Orchard and tropical fruit textures—blackcurrant bud (cassis), peach skin, pear, fig, and osmanthus.',
+    academicNotes:
+      'Constructed with gamma-undecalactone (Aldehyde C-14), damascones, hexyl acetate, and cassis mercaptans.',
+    keyMaterials: ['Blackcurrant Bud Absolute', 'Aldehyde C-14 (Undecalactone)', 'Damascenone', 'Fructone'],
+    subFacets: ['Cassis', 'Lactonic Peach', 'Crisp Pear', 'Ripe Fig', 'Berry'],
   },
 ];
 

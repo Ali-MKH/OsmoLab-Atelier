@@ -13,8 +13,24 @@ export class PersistenceModeError extends Error {
   }
 }
 
+export class CatalogNotInitializedError extends Error {
+  public readonly statusCode: number;
+  public readonly code: string;
+  constructor(
+    message = 'Global catalog is not initialized in PostgreSQL.',
+    statusCode = 503
+  ) {
+    super(message);
+    this.name = 'CatalogNotInitializedError';
+    this.statusCode = statusCode;
+    this.code = 'CATALOG_NOT_INITIALIZED';
+  }
+}
+
 declare global {
   var _postgresPool: Pool | undefined;
+  var _postgresPoolKey: string | undefined;
+  var _drizzleDb: NodePgDatabase<typeof schema> | undefined;
 }
 
 let persistenceModeOverride: PersistenceMode | null = null;
@@ -77,13 +93,20 @@ export function getPersistenceMode(): PersistenceMode {
 }
 
 export const createPool = () => {
-  if (!global._postgresPool) {
+  const host = process.env.SQL_HOST || '127.0.0.1';
+  const port = process.env.SQL_PORT ? Number(process.env.SQL_PORT) : 5432;
+  const user = process.env.SQL_USER || 'postgres';
+  const password = process.env.SQL_PASSWORD ?? '';
+  const database = process.env.SQL_DB_NAME || 'postgres';
+  const poolKey = `${host}:${port}:${user}:${database}`;
+
+  if (!global._postgresPool || global._postgresPoolKey !== poolKey) {
     global._postgresPool = new Pool({
-      host: process.env.SQL_HOST || 'localhost',
-      port: process.env.SQL_PORT ? Number(process.env.SQL_PORT) : 5432,
-      user: process.env.SQL_USER,
-      password: process.env.SQL_PASSWORD,
-      database: process.env.SQL_DB_NAME,
+      host,
+      port,
+      user,
+      password,
+      database,
       max: 10,
       connectionTimeoutMillis: 5000,
     });
@@ -91,6 +114,9 @@ export const createPool = () => {
     global._postgresPool.on('error', (err) => {
       console.error('PostgreSQL pool error:', err);
     });
+
+    global._postgresPoolKey = poolKey;
+    global._drizzleDb = drizzle(global._postgresPool, { schema });
   }
   return global._postgresPool;
 };
@@ -113,7 +139,9 @@ export function requirePostgresDb(): NodePgDatabase<typeof schema> {
       503
     );
   }
-  return db;
+  createPool();
+  return global._drizzleDb || db;
 }
+
 
 

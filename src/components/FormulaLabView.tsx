@@ -67,8 +67,8 @@ import { generateFormulaPDF } from '../domain/pdf-export';
 interface FormulaLabViewProps {
   mode: 'lab' | 'library';
   formulas: Formula[];
-  activeFormula: Formula;
-  activeVersionLabel: string;
+  activeFormula: Formula | null;
+  activeVersionLabel: string | null;
   materials: RawMaterial[];
   accords: AccordDefinition[];
   regulatoryLimits: MaterialRegulatoryLimit[];
@@ -137,7 +137,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const [librarySearch, setLibrarySearch] = useState('');
   const [showNewFormulaModal, setShowNewFormulaModal] = useState(false);
   const [newFormulaName, setNewFormulaName] = useState('');
-  const [newFormulaProject, setNewFormulaProject] = useState('Forest Project');
+  const [newFormulaProject, setNewFormulaProject] = useState('Personal Study');
   const [newFormulaBrief, setNewFormulaBrief] = useState('');
 
   useEffect(() => {
@@ -153,6 +153,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
 
   // Active version lookup
   const currentVersion = useMemo(() => {
+    if (!activeFormula || !Array.isArray(activeFormula.versions)) return undefined;
     return (
       activeFormula.versions.find((v) => v.versionLabel === activeVersionLabel) ||
       activeFormula.versions[activeFormula.versions.length - 1] ||
@@ -165,10 +166,10 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     currentVersion?.items || []
   );
   const [lastSyncedVersionId, setLastSyncedVersionId] = useState<string>(
-    `${activeFormula.id}-${currentVersion?.versionLabel}`
+    `${activeFormula?.id ?? 'none'}-${currentVersion?.versionLabel ?? 'none'}`
   );
 
-  const syncKey = `${activeFormula.id}-${currentVersion?.versionLabel}`;
+  const syncKey = `${activeFormula?.id ?? 'none'}-${currentVersion?.versionLabel ?? 'none'}`;
   if (syncKey !== lastSyncedVersionId) {
     setWorkingItems(currentVersion?.items || []);
     setLastSyncedVersionId(syncKey);
@@ -230,27 +231,29 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const [branchNotes, setBranchNotes] = useState('');
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
-  // Comparison state (defaults to V4 vs V5 on Forest Study)
+  // Comparison state
   const [compareV1Label, setCompareV1Label] = useState<string>(
-    activeFormula.versions.length > 1
-      ? activeFormula.versions[1]?.versionLabel || activeFormula.versions[0].versionLabel
-      : activeFormula.versions[0]?.versionLabel || 'V1'
+    activeFormula && activeFormula.versions.length > 1
+      ? activeFormula.versions[1]?.versionLabel || activeFormula.versions[0]?.versionLabel || 'V1'
+      : activeFormula?.versions[0]?.versionLabel || 'V1'
   );
   const [compareV2Label, setCompareV2Label] = useState<string>(
-    currentVersion?.versionLabel || 'V5'
+    currentVersion?.versionLabel || 'V1'
   );
 
   // Target brief & target scent facets editing state
-  const [briefText, setBriefText] = useState(activeFormula.targetBrief);
-  const [briefAtmosphere, setBriefAtmosphere] = useState(activeFormula.targetAtmosphere);
-  const [briefTexture, setBriefTexture] = useState(activeFormula.targetTexture);
-  const [briefDrydown, setBriefDrydown] = useState(activeFormula.targetDrydown);
-  const [formulaStatus, setFormulaStatus] = useState<FormulaStatus>(activeFormula.status);
+  const [briefText, setBriefText] = useState(activeFormula?.targetBrief || '');
+  const [briefAtmosphere, setBriefAtmosphere] = useState(activeFormula?.targetAtmosphere || '');
+  const [briefTexture, setBriefTexture] = useState(activeFormula?.targetTexture || '');
+  const [briefDrydown, setBriefDrydown] = useState(activeFormula?.targetDrydown || '');
+  const [formulaStatus, setFormulaStatus] = useState<FormulaStatus>(
+    activeFormula?.status || 'Draft'
+  );
   const [finalConc, setFinalConc] = useState<number>(
-    activeFormula.finalProductConcentration || 20
+    activeFormula?.finalProductConcentration || 20
   );
   const [selectedIfraCategory, setSelectedIfraCategory] = useState<string>(
-    activeFormula.ifraCategory || 'Category 4 (Fine Fragrance)'
+    activeFormula?.ifraCategory || 'Category 4 (Fine Fragrance)'
   );
   const [localRegulatoryLimits, setLocalRegulatoryLimits] =
     useState<MaterialRegulatoryLimit[]>(regulatoryLimits);
@@ -263,24 +266,26 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     'Imported IFRA 51st Amendment Dossier Override'
   );
   const [workingTargetFacets, setWorkingTargetFacets] = useState<Record<string, number>>(
-    activeFormula.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
+    activeFormula?.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
   );
   const [includeAllCoreFacets, setIncludeAllCoreFacets] = useState<boolean>(false);
-  const [lastSyncedFormulaId, setLastSyncedFormulaId] = useState<number>(activeFormula.id);
+  const [lastSyncedFormulaId, setLastSyncedFormulaId] = useState<number | null>(
+    activeFormula?.id ?? null
+  );
 
-  if (activeFormula.id !== lastSyncedFormulaId) {
-    setLastSyncedFormulaId(activeFormula.id);
-    setBriefText(activeFormula.targetBrief);
-    setBriefAtmosphere(activeFormula.targetAtmosphere);
-    setBriefTexture(activeFormula.targetTexture);
-    setBriefDrydown(activeFormula.targetDrydown);
-    setFormulaStatus(activeFormula.status);
-    setFinalConc(activeFormula.finalProductConcentration || 20);
+  if ((activeFormula?.id ?? null) !== lastSyncedFormulaId) {
+    setLastSyncedFormulaId(activeFormula?.id ?? null);
+    setBriefText(activeFormula?.targetBrief || '');
+    setBriefAtmosphere(activeFormula?.targetAtmosphere || '');
+    setBriefTexture(activeFormula?.targetTexture || '');
+    setBriefDrydown(activeFormula?.targetDrydown || '');
+    setFormulaStatus(activeFormula?.status || 'Draft');
+    setFinalConc(activeFormula?.finalProductConcentration || 20);
     setSelectedIfraCategory(
-      activeFormula.ifraCategory || 'Category 4 (Fine Fragrance)'
+      activeFormula?.ifraCategory || 'Category 4 (Fine Fragrance)'
     );
     setWorkingTargetFacets(
-      activeFormula.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
+      activeFormula?.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
     );
   }
 
@@ -376,7 +381,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         selectedIfraCategory,
         finalConc,
         {
-          intendedProduct: activeFormula.intendedProduct,
+          intendedProduct: activeFormula?.intendedProduct || 'Eau de Parfum (20% conc.)',
         }
       ),
     [
@@ -385,7 +390,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
       effectiveRegulatoryLimits,
       selectedIfraCategory,
       finalConc,
-      activeFormula.intendedProduct,
+      activeFormula?.intendedProduct,
     ]
   );
 
@@ -607,6 +612,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   };
 
   const handleQuickSaveVersion = async (asNewBranch: boolean = false) => {
+    if (!activeFormula || !currentVersion) return;
     const labelToSave = asNewBranch
       ? branchVersionLabel.trim() || `${currentVersion.versionLabel}-Rev`
       : currentVersion.status === 'Committed'
@@ -645,6 +651,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const handleCreateNewFormula = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFormulaName.trim()) return;
+    const defaultMat =
+      materials.find((m) => m.isOnShelf) || materials[0];
     await onSaveFormulaVersion(
       {
         name: newFormulaName.trim(),
@@ -663,22 +671,24 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         status: 'Draft',
         versionNotes: 'Initial V1 creation',
         maturationDays: 14,
-        items: [
-          {
-            id: `init-${Date.now()}`,
-            type: 'material',
-            materialId: materials[0]?.id || 1,
-            name: materials[0]?.name || 'Bergamot FCF',
-            quantityGrams: 10,
-            percentage: 100,
-            dilutionPercent: 100,
-            solvent: 'Neat',
-            activeMaterialPercent: 100,
-            supplier: materials[0]?.supplier || 'Capua 1880',
-            costPerGram: 0.42,
-            notes: 'Opening note',
-          },
-        ],
+        items: defaultMat
+          ? [
+              {
+                id: `init-${Date.now()}`,
+                type: 'material',
+                materialId: defaultMat.id,
+                name: defaultMat.name,
+                quantityGrams: 10,
+                percentage: 100,
+                dilutionPercent: 100,
+                solvent: 'Neat',
+                activeMaterialPercent: 100,
+                supplier: defaultMat.supplier || 'Standard',
+                costPerGram: defaultMat.costPerGram ?? 0.42,
+                notes: 'Opening note',
+              },
+            ]
+          : [],
       }
     );
     setShowNewFormulaModal(false);
@@ -687,6 +697,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   };
 
   const handleExportCSV = () => {
+    if (!activeFormula) return;
     const headers = [
       'Ingredient',
       'Percentage',
@@ -729,7 +740,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   };
 
   const handleExportPDF = () => {
-    if (!currentVersion) return;
+    if (!activeFormula || !currentVersion) return;
     try {
       generateFormulaPDF({
         formula: activeFormula,
@@ -749,10 +760,10 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
 
   // Version Comparison calculation
   const v1ForCompare =
-    activeFormula.versions.find((v) => v.versionLabel === compareV1Label) ||
-    activeFormula.versions[0];
+    activeFormula?.versions.find((v) => v.versionLabel === compareV1Label) ||
+    activeFormula?.versions[0];
   const v2ForCompare =
-    activeFormula.versions.find((v) => v.versionLabel === compareV2Label) ||
+    activeFormula?.versions.find((v) => v.versionLabel === compareV2Label) ||
     currentVersion;
 
   const comparisonDiffs = useMemo(() => {
@@ -1029,6 +1040,148 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
               </div>
 
               {/* Sticky Action Footer */}
+              <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-800 shrink-0 sticky bottom-0 bg-[#111621] z-10">
+                <button
+                  type="button"
+                  onClick={() => setShowNewFormulaModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white rounded-md shadow transition-colors"
+                >
+                  Create Formula V1
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Zero-Formula Empty State in Formula Lab mode
+  if (!activeFormula) {
+    return (
+      <div className="space-y-6 w-full max-w-full min-w-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <h1 className="text-2xl font-sans font-semibold text-white">
+              Formula Lab Workbench
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Compose and normalize fragrance formulas, convert batch units, verify IFRA compliance, and compare version lineages.
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="lab-new-formula-btn"
+            onClick={() => setShowNewFormulaModal(true)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span>Create First Formula</span>
+          </button>
+        </div>
+
+        <div
+          data-testid="formula-lab-empty-state"
+          className="rounded-xl bg-[#111621] border border-slate-800 p-10 sm:p-14 text-center space-y-4"
+        >
+          <div className="w-12 h-12 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400">
+            <Scale className="w-6 h-6" />
+          </div>
+          <div className="space-y-1.5 max-w-lg mx-auto">
+            <h2 className="text-lg font-semibold text-white">
+              No Active Formula Selected
+            </h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Your formulation workspace starts clean with zero pre-loaded demo formulas. Create your first fragrance formula to begin composing with materials from My Shelf and the 815-material Catalog.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              data-testid="create-first-formula-cta"
+              onClick={() => setShowNewFormulaModal(true)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors inline-flex items-center gap-2 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create First Formula</span>
+            </button>
+          </div>
+        </div>
+
+        {showNewFormulaModal && (
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs overflow-y-auto"
+            onClick={() => setShowNewFormulaModal(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-formula-lab-title"
+          >
+            <form
+              onSubmit={handleCreateNewFormula}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg rounded-xl bg-[#111621] border border-slate-700 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden text-xs my-auto"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0 sticky top-0 bg-[#111621] z-10">
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
+                    Formula Workspace
+                  </span>
+                  <h3 id="create-formula-lab-title" className="text-base font-semibold text-white">
+                    Create New Fragrance Formula
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNewFormulaModal(false)}
+                  aria-label="Close"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 overscroll-contain space-y-4">
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Formula Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newFormulaName}
+                    onChange={(e) => setNewFormulaName(e.target.value)}
+                    placeholder="e.g., Coastal Cypress Study"
+                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Project</label>
+                  <input
+                    type="text"
+                    value={newFormulaProject}
+                    onChange={(e) => setNewFormulaProject(e.target.value)}
+                    placeholder="e.g., Commercial Brief / Eau de Parfum"
+                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    Olfactory Target Brief
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={newFormulaBrief}
+                    onChange={(e) => setNewFormulaBrief(e.target.value)}
+                    placeholder="Describe the atmosphere, texture, evolution, and desired drydown..."
+                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-800 shrink-0 sticky bottom-0 bg-[#111621] z-10">
                 <button
                   type="button"

@@ -1,21 +1,52 @@
-import type {
+import {
   AccordDefinition,
   ExperimentEntry,
   Formula,
   FormulaLineItem,
+  FormulaVersion,
   MaterialConstituent,
   MaterialRegulatoryLimit,
   MaterialRegulatoryRecord,
-  MaterialUsageReview,
   RawMaterial,
   RegulatoryVerificationStatus,
   ScentMemoryRecord,
   SensoryEvaluation,
-  ShelfMutationPayload,
   UserShelfItem,
 } from '../domain/types';
 
-export interface BootstrapResponseDto {
+export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+export interface CatalogQueryOptions {
+  q?: string;
+  family?: string;
+  origin?: string;
+  pyramidCode?: string;
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+}
+
+export interface CatalogListResponse {
+  items?: RawMaterial[];
+  materials: RawMaterial[];
+  regulatoryLimits: MaterialRegulatoryLimit[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface MaterialRegulatoryDossierDto {
+  materialId: number;
+  materialName: string;
+  casNumber: string;
+  verificationStatus: RegulatoryVerificationStatus;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  regulatoryRecords: MaterialRegulatoryRecord[];
+  constituents: MaterialConstituent[];
+}
+
+export interface BootstrapResponse {
   user: {
     uid: string;
     email: string;
@@ -38,90 +69,51 @@ export interface BootstrapResponseDto {
   activeVersionLabel: string | null;
 }
 
-export interface CatalogQueryDto {
-  search?: string;
-  family?: string;
-  origin?: string;
-  noteRole?: string;
-  pyramidCode?: string;
-  shelfOnly?: boolean;
-  workbenchOnly?: boolean;
-  includeRegulatory?: boolean;
-  limit?: number;
-  offset?: number;
-}
-
-export interface CatalogResponseDto {
-  totalCatalogMaterials: number;
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-  items: RawMaterial[];
-  materials: RawMaterial[];
-  regulatoryLimits: MaterialRegulatoryLimit[];
-  regulatoryRecords?: MaterialRegulatoryRecord[];
-  constituents?: MaterialConstituent[];
-}
-
-export interface MaterialRegulatoryDossierDto {
-  materialId: number;
-  materialName: string;
-  casNumber: string;
-  verificationStatus: RegulatoryVerificationStatus;
-  regulatoryLimit: MaterialRegulatoryLimit | null;
-  regulatoryRecords: MaterialRegulatoryRecord[];
-  constituents: MaterialConstituent[];
-}
-
-async function parseJsonOrThrow<T>(res: Response, fallbackError: string): Promise<T> {
+export async function fetchHealthDataApi(): Promise<{
+  persistenceMode: 'postgres' | 'memory';
+  databaseReady: boolean;
+  catalogReady: boolean;
+  catalogCount: number;
+  catalogVersion: string;
+}> {
+  const res = await fetch('/api/health/data');
   if (!res.ok) {
-    let errMsg = fallbackError;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) errMsg = body.error;
-    } catch {
-      // ignore non-json error body
-    }
-    throw new Error(errMsg);
+    throw new Error(`Health check failed: ${res.status}`);
   }
-  return (await res.json()) as T;
-}
-
-export async function fetchBootstrapApi(
-  headers: Record<string, string>
-): Promise<BootstrapResponseDto> {
-  const res = await fetch('/api/bootstrap', { headers });
-  return parseJsonOrThrow<BootstrapResponseDto>(
-    res,
-    'Failed to load workspace bootstrap'
-  );
+  return res.json();
 }
 
 export async function fetchCatalogApi(
-  params: CatalogQueryDto = {},
+  options: CatalogQueryOptions = {},
   headers: Record<string, string> = {}
-): Promise<CatalogResponseDto> {
-  const qs = new URLSearchParams();
-  if (params.search) qs.set('search', params.search);
-  if (params.family && params.family !== 'All') qs.set('family', params.family);
-  if (params.origin && params.origin !== 'All') qs.set('origin', params.origin);
-  if (params.noteRole && params.noteRole !== 'All') {
-    qs.set('noteRole', params.noteRole);
+): Promise<CatalogListResponse> {
+  const params = new URLSearchParams();
+  if (options.q) params.set('q', options.q);
+  if (options.family && options.family !== 'All') params.set('family', options.family);
+  if (options.origin && options.origin !== 'All') params.set('origin', options.origin);
+  if (options.pyramidCode && options.pyramidCode !== 'All') {
+    params.set('pyramidCode', options.pyramidCode);
   }
-  if (params.pyramidCode && params.pyramidCode !== 'ALL') {
-    qs.set('pyramidCode', params.pyramidCode);
-  }
-  if (params.shelfOnly) qs.set('shelfOnly', 'true');
-  if (params.workbenchOnly) qs.set('workbenchOnly', 'true');
-  if (params.includeRegulatory) qs.set('includeRegulatory', 'true');
-  if (params.limit !== undefined) qs.set('limit', String(params.limit));
-  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
 
-  const queryString = qs.toString();
-  const url = queryString ? `/api/catalog?${queryString}` : '/api/catalog';
-  const res = await fetch(url, { headers });
-  return parseJsonOrThrow<CatalogResponseDto>(res, 'Failed to load catalog');
+  const qs = params.toString();
+  const res = await fetch(`/api/catalog${qs ? `?${qs}` : ''}`, {
+    headers,
+    signal: options.signal,
+  });
+  if (!res.ok) {
+    let errBody: { error?: string; message?: string } = {};
+    try {
+      errBody = await res.json();
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(
+      errBody.message || errBody.error || `Failed to fetch catalog: ${res.status}`
+    );
+  }
+  return res.json();
 }
 
 export async function fetchCatalogMaterialDetailApi(
@@ -130,10 +122,12 @@ export async function fetchCatalogMaterialDetailApi(
 ): Promise<{
   material: RawMaterial;
   regulatoryLimit: MaterialRegulatoryLimit | null;
-  usageReviews: MaterialUsageReview[];
 }> {
   const res = await fetch(`/api/catalog/${materialId}`, { headers });
-  return parseJsonOrThrow(res, 'Failed to load material details');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch material ${materialId}: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function fetchMaterialRegulatoryDossierApi(
@@ -141,100 +135,129 @@ export async function fetchMaterialRegulatoryDossierApi(
   headers: Record<string, string> = {}
 ): Promise<MaterialRegulatoryDossierDto> {
   const res = await fetch(`/api/catalog/${materialId}/regulatory`, { headers });
-  return parseJsonOrThrow<MaterialRegulatoryDossierDto>(
-    res,
-    'Failed to load material regulatory dossier'
-  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch regulatory dossier for ${materialId}: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchBootstrapApi(
+  headers: Record<string, string> = {}
+): Promise<BootstrapResponse> {
+  const res = await fetch('/api/bootstrap', { headers });
+  if (!res.ok) {
+    throw new Error(`Bootstrap failed: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function fetchUserShelfApi(
-  headers: Record<string, string>
+  headers: Record<string, string> = {},
+  workbenchOnly = false
 ): Promise<{
-  shelf: UserShelfItem[];
-  shelfCount: number;
-  workbenchCount: number;
+  userShelf: UserShelfItem[];
+  materials: RawMaterial[];
+  regulatoryLimits: MaterialRegulatoryLimit[];
+  total: number;
 }> {
-  const res = await fetch('/api/shelf', { headers });
-  return parseJsonOrThrow(res, 'Failed to load user shelf');
+  const res = await fetch(
+    `/api/shelf${workbenchOnly ? '?workbenchOnly=true' : ''}`,
+    { headers }
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch shelf: ${res.status}`);
+  }
+  return res.json();
 }
 
-export async function addToShelfApi(
+export async function upsertShelfItemApi(
   materialId: number,
-  payload: ShelfMutationPayload,
-  headers: Record<string, string>
-) {
+  payload: {
+    supplierName?: string | null;
+    supplierProductName?: string | null;
+    workingDilutionPct?: number | null;
+    solvent?: string | null;
+    personalNotes?: string | null;
+    isOnWorkbench?: boolean;
+    pyramidOverrideCode?: RawMaterial['pyramidOverrideCode'];
+    favorite?: boolean;
+  },
+  headers: Record<string, string> = {}
+): Promise<{ ok: boolean; shelfItem: UserShelfItem | null }> {
   const res = await fetch(`/api/shelf/${materialId}`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify(payload || {}),
-  });
-  return parseJsonOrThrow<{
-    item: UserShelfItem;
-    shelf: UserShelfItem[];
-    workspace?: unknown;
-  }>(res, 'Failed to add material to My Shelf');
-}
-
-export async function updateShelfItemApi(
-  materialId: number,
-  payload: ShelfMutationPayload,
-  headers: Record<string, string>
-) {
-  const res = await fetch(`/api/shelf/${materialId}`, {
-    method: 'PATCH',
-    headers,
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  return parseJsonOrThrow<{
-    item: UserShelfItem;
-    shelf: UserShelfItem[];
-    workspace?: unknown;
-  }>(res, 'Failed to update My Shelf item');
+  if (!res.ok) {
+    throw new Error(`Failed to upsert shelf item ${materialId}: ${res.status}`);
+  }
+  return res.json();
 }
 
-export async function toggleWorkbenchPinApi(
+export async function removeShelfItemApi(
   materialId: number,
-  isOnWorkbench: boolean | undefined,
-  headers: Record<string, string>
-) {
-  const res = await fetch(`/api/shelf/${materialId}/workbench`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(
-      isOnWorkbench !== undefined ? { isOnWorkbench } : {}
-    ),
-  });
-  return parseJsonOrThrow<{ item: UserShelfItem; shelf: UserShelfItem[] }>(
-    res,
-    'Failed to update Workbench pin'
-  );
-}
-
-export async function removeFromShelfApi(
-  materialId: number,
-  headers: Record<string, string>
-) {
+  headers: Record<string, string> = {}
+): Promise<{ ok: boolean; materialId: number }> {
   const res = await fetch(`/api/shelf/${materialId}`, {
     method: 'DELETE',
     headers,
   });
-  return parseJsonOrThrow<{
-    removed: boolean;
-    shelf: UserShelfItem[];
-    workspace?: unknown;
-  }>(res, 'Failed to remove material from My Shelf');
+  if (!res.ok) {
+    throw new Error(`Failed to remove shelf item ${materialId}: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function loadStarterOrganApi(
+  headers: Record<string, string> = {}
+): Promise<{
+  ok: boolean;
+  addedCount: number;
+  userShelf: UserShelfItem[];
+  materials: RawMaterial[];
+  regulatoryLimits: MaterialRegulatoryLimit[];
+  total: number;
+}> {
+  const res = await fetch('/api/shelf/starter-organ', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load starter organ: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function fetchFormulasApi(
-  headers: Record<string, string>
+  headers: Record<string, string> = {}
 ): Promise<{ formulas: Formula[]; total: number }> {
   const res = await fetch('/api/formulas', { headers });
-  return parseJsonOrThrow(res, 'Failed to load formulas');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch formulas: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchFormulaDetailApi(
+  formulaId: number,
+  headers: Record<string, string> = {}
+): Promise<{
+  formula: Formula;
+  versions: FormulaVersion[];
+  evaluations: SensoryEvaluation[];
+  experiments: ExperimentEntry[];
+}> {
+  const res = await fetch(`/api/formulas/${formulaId}`, { headers });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch formula ${formulaId}: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function saveFormulaVersionApi(
-  formula: Partial<Formula> & { id?: number; name: string },
-  version: {
+  formulaPayload: Partial<Formula> & { id?: number; name: string },
+  versionPayload: {
     versionLabel: string;
     parentVersionId?: number | null;
     status: 'Draft' | 'Committed';
@@ -242,52 +265,113 @@ export async function saveFormulaVersionApi(
     maturationDays: number;
     items: FormulaLineItem[];
   },
-  headers: Record<string, string>
-) {
+  headers: Record<string, string> = {}
+): Promise<{
+  formulaId: number;
+  formulaVersionId: number;
+  formula: Formula;
+  version: FormulaVersion;
+}> {
   const res = await fetch('/api/formulas/save', {
     method: 'POST',
-    headers,
-    body: JSON.stringify({ formula, version }),
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ formula: formulaPayload, version: versionPayload }),
   });
-  return parseJsonOrThrow(res, 'Failed to save formula version');
+  if (!res.ok) {
+    throw new Error(`Failed to save formula version: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function fetchAccordsApi(
-  headers: Record<string, string>
+  headers: Record<string, string> = {}
 ): Promise<{ accords: AccordDefinition[]; total: number }> {
   const res = await fetch('/api/accords', { headers });
-  return parseJsonOrThrow(res, 'Failed to load accords');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch accords: ${res.status}`);
+  }
+  return res.json();
 }
 
-export async function fetchEvaluationsApi(
-  headers: Record<string, string>,
-  formulaId?: number
-): Promise<{ evaluations: SensoryEvaluation[]; total: number }> {
-  const url = formulaId
-    ? `/api/evaluations?formulaId=${formulaId}`
-    : '/api/evaluations';
-  const res = await fetch(url, { headers });
-  return parseJsonOrThrow(res, 'Failed to load evaluations');
+export async function createMaterialApi(
+  payload: Omit<RawMaterial, 'id'> & {
+    maxAllowedPercent?: number | null;
+    ifraSource?: string;
+  },
+  headers: Record<string, string> = {}
+): Promise<{
+  materialId: number;
+  material: RawMaterial;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  shelfItem: UserShelfItem | null;
+}> {
+  const res = await fetch('/api/materials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create material: ${res.status}`);
+  }
+  return res.json();
 }
 
-export async function fetchExperimentsApi(
-  headers: Record<string, string>,
-  formulaId?: number
-): Promise<{ experiments: ExperimentEntry[]; total: number }> {
-  const url = formulaId
-    ? `/api/experiments?formulaId=${formulaId}`
-    : '/api/experiments';
-  const res = await fetch(url, { headers });
-  return parseJsonOrThrow(res, 'Failed to load experiments');
+export async function createAccordApi(
+  payload: Omit<AccordDefinition, 'id'>,
+  headers: Record<string, string> = {}
+): Promise<{ accordId: number; accord: AccordDefinition }> {
+  const res = await fetch('/api/accords', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create accord: ${res.status}`);
+  }
+  return res.json();
 }
 
-export async function fetchScentMemoriesApi(
-  headers: Record<string, string>,
-  materialId?: number
-): Promise<{ scentMemories: ScentMemoryRecord[]; total: number }> {
-  const url = materialId
-    ? `/api/memories?materialId=${materialId}`
-    : '/api/memories';
-  const res = await fetch(url, { headers });
-  return parseJsonOrThrow(res, 'Failed to load scent memories');
+export async function addExperimentApi(
+  payload: Omit<ExperimentEntry, 'id'>,
+  headers: Record<string, string> = {}
+): Promise<{ experiment: ExperimentEntry }> {
+  const res = await fetch('/api/experiments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to add experiment: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function addEvaluationApi(
+  payload: Omit<SensoryEvaluation, 'id' | 'createdAt'>,
+  headers: Record<string, string> = {}
+): Promise<{ evaluation: SensoryEvaluation }> {
+  const res = await fetch('/api/evaluations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to add evaluation: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function upsertScentMemoryApi(
+  payload: Omit<ScentMemoryRecord, 'id' | 'lastReviewedAt'>,
+  headers: Record<string, string> = {}
+): Promise<{ scentMemory: ScentMemoryRecord }> {
+  const res = await fetch('/api/memories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to save scent memory: ${res.status}`);
+  }
+  return res.json();
 }

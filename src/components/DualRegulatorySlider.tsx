@@ -25,11 +25,11 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
   currentPercent = null,
   ifraLimitPercent,
   euLimitPercent,
-  ifraCategory = 'Cat 4 (Fine Fragrance)',
-  euRegulationReference = 'EU Cosmetics Reg. (EC 1223/2009)',
+  ifraCategory,
+  euRegulationReference,
   isEuAllergen = false,
-  leaveOnThresholdPct = 0.001,
-  rinseOffThresholdPct = 0.01,
+  leaveOnThresholdPct = null,
+  rinseOffThresholdPct = null,
   verificationStatus,
   sourceDocument,
   sourceUrl,
@@ -211,14 +211,14 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           )}
           <span className="text-xs font-semibold text-white">
-            Dual Safety Standards: IFRA 51st & EU Cosmetics Regulation
+            Dual Safety Standards: {sourceDocument || 'IFRA & EU Cosmetics Regulation'}
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {isEuAllergen && (
             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 border border-amber-500/40 text-amber-300">
-              EU Allergen Declarable (&gt;{(leaveOnThresholdPct ?? 0.001).toFixed(3)}% leave-on / &gt;{(rinseOffThresholdPct ?? 0.01).toFixed(2)}% rinse-off)
+              EU Allergen Declarable ({leaveOnThresholdPct != null ? `>${leaveOnThresholdPct}% leave-on` : 'leave-on threshold lookup required'} / {rinseOffThresholdPct != null ? `>${rinseOffThresholdPct}% rinse-off` : 'rinse-off threshold lookup required'})
             </span>
           )}
           {isProhibited ? (
@@ -261,7 +261,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
                 ? `Warning (>80% Limit · ${maxUtilization.toFixed(0)}%)`
                 : isOverallCaution
                 ? `Caution (50–80% Limit · ${maxUtilization.toFixed(0)}%)`
-                : 'Safe (<50% Limit Utilization)'}
+                : 'Low utilization (<50% Limit)'}
             </span>
           )}
         </div>
@@ -269,12 +269,12 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
 
       {/* Dual Comparative Visual Gauge Slider */}
       <div className="space-y-4">
-        {/* 1. IFRA 51st Track */}
+        {/* 1. IFRA Track */}
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-xs">
             <span className="text-slate-300 font-medium flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-              <span>IFRA 51st Amendment ({ifraCategory} — Finished Product %)</span>
+              <span>{sourceDocument || 'IFRA Standard'} {ifraCategory ? `(${ifraCategory} — Finished Product %)` : '(Finished Product %)'}</span>
             </span>
             <span className="font-mono-tabular text-slate-300 shrink-0">
               Limit:{' '}
@@ -349,7 +349,7 @@ export const DualRegulatorySlider: React.FC<DualRegulatorySliderProps> = ({
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-xs">
             <span className="text-slate-300 font-medium flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-              <span>EU Cosmetic Regulation EC 1223/2009 (Annex III Concentration Limit)</span>
+              <span>{euRegulationReference || 'EU Cosmetic Regulation (Annex III Concentration Limit)'}</span>
             </span>
             <span className="font-mono-tabular text-slate-300 shrink-0">
               Limit:{' '}
