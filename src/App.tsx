@@ -11,17 +11,8 @@ import {
   RawMaterial,
   ScentMemoryRecord,
   SensoryEvaluation,
+  UserShelfItem,
 } from './domain/types';
-import {
-  SEED_ACCORDS,
-  SEED_EVALUATIONS,
-  SEED_EXPERIMENTS,
-  SEED_FORMULAS,
-  SEED_MATERIALS,
-  SEED_REGULATORY_LIMITS,
-  SEED_SCENT_MEMORIES,
-  SEED_USAGE_REVIEWS,
-} from './domain/seed-data';
 import {
   CurrencySettings,
   DEFAULT_CURRENCY_SETTINGS,
@@ -33,7 +24,20 @@ import {
 } from './features/formula/FormulaLabView';
 import { MaterialCatalogView } from './features/catalog/MaterialCatalogView';
 import { EvaluationAndJournalView } from './features/evaluation/EvaluationAndJournalView';
-import { fetchCatalogApi } from './api/client';
+import {
+  fetchBootstrapApi,
+  fetchUserShelfApi,
+  fetchFormulasApi,
+  fetchAccordsApi,
+  fetchEvaluationsApi,
+  fetchExperimentsApi,
+  fetchScentMemoriesApi,
+  addToShelfApi,
+  updateShelfItemApi,
+  removeFromShelfApi,
+  toggleWorkbenchPinApi,
+  saveFormulaVersionApi,
+} from './api/client';
 import {
   OlfactoryMentorView,
   GlobalSearchView,
@@ -342,30 +346,26 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  // Workspace Data State (seeded immediately for 0ms latency, then hydrated from Cloud SQL PostgreSQL)
-  const [materials, setMaterials] = useState<RawMaterial[]>(SEED_MATERIALS);
-  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>(
-    SEED_REGULATORY_LIMITS
-  );
-  const [scentMemories, setScentMemories] =
-    useState<ScentMemoryRecord[]>(SEED_SCENT_MEMORIES);
-  const [accords, setAccords] = useState<AccordDefinition[]>(SEED_ACCORDS);
-  const [formulas, setFormulas] = useState<Formula[]>(SEED_FORMULAS);
-  const [experiments, setExperiments] = useState<ExperimentEntry[]>(SEED_EXPERIMENTS);
-  const [evaluations, setEvaluations] =
-    useState<SensoryEvaluation[]>(SEED_EVALUATIONS);
-  const [usageReviews, setUsageReviews] =
-    useState<MaterialUsageReview[]>(SEED_USAGE_REVIEWS);
+  // Workspace Data State (starts empty/loading and hydrates strictly from typed APIs)
+  const [materials, setMaterials] = useState<RawMaterial[]>([]);
+  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>([]);
+  const [scentMemories, setScentMemories] = useState<ScentMemoryRecord[]>([]);
+  const [accords, setAccords] = useState<AccordDefinition[]>([]);
+  const [formulas, setFormulas] = useState<Formula[]>([]);
+  const [experiments, setExperiments] = useState<ExperimentEntry[]>([]);
+  const [evaluations, setEvaluations] = useState<SensoryEvaluation[]>([]);
+  const [usageReviews, setUsageReviews] = useState<MaterialUsageReview[]>([]);
+  const [userShelfItems, setUserShelfItems] = useState<UserShelfItem[]>([]);
 
   // Active Selection State (persisted across reloads)
   const [activeFormulaId, setActiveFormulaId] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem(ACTIVE_FORMULA_STORAGE_KEY));
-      if (saved && SEED_FORMULAS.some((f) => f.id === saved)) return saved;
+      if (saved) return saved;
     } catch {
       // ignore
     }
-    return SEED_FORMULAS[0].id;
+    return 0;
   });
   const [activeVersionLabel, setActiveVersionLabel] = useState<string>(() => {
     try {
@@ -374,16 +374,16 @@ export default function App() {
     } catch {
       // ignore
     }
-    return 'V5';
+    return 'V1';
   });
   const [selectedMaterialId, setSelectedMaterialId] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem(SELECTED_MATERIAL_STORAGE_KEY));
-      if (saved && SEED_MATERIALS.some((m) => m.id === saved)) return saved;
+      if (saved) return saved;
     } catch {
       // ignore
     }
-    return SEED_MATERIALS[1].id; // Hedione by default to showcase Used In intelligence
+    return 0;
   });
 
   useEffect(() => {
@@ -636,45 +636,70 @@ export default function App() {
 
   const reloadWorkspaceData = useCallback(async () => {
     if (!idToken) return;
+    const headers = getAuthHeaders();
     try {
-      const res = await fetch('/api/workspace', {
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        applyServerWorkspace(data);
+      const [boot, shelfData, formulasData, accordsData] = await Promise.all([
+        fetchBootstrapApi(headers).catch(() => null),
+        fetchUserShelfApi(headers).catch(() => null),
+        fetchFormulasApi(headers).catch(() => null),
+        fetchAccordsApi(headers).catch(() => null),
+      ]);
+      if (boot?.user?.theme) {
+        // sync user settings if returned
+      }
+      if (shelfData?.shelf) {
+        setUserShelfItems(shelfData.shelf);
+        const shelfMats: RawMaterial[] =
+          (shelfData as unknown as { materials?: RawMaterial[] }).materials || [];
+        setMaterials(shelfMats);
+      }
+      if (formulasData?.formulas) {
+        setFormulas(formulasData.formulas);
+        if (formulasData.formulas.length > 0) {
+          setActiveFormulaId((prev) =>
+            formulasData.formulas.some((f) => f.id === prev)
+              ? prev
+              : formulasData.formulas[0].id
+          );
+        }
+      }
+      if (accordsData?.accords) {
+        setAccords(accordsData.accords);
       }
     } catch (err) {
-      console.warn('Operating with local cached seed state:', err);
+      console.warn('Failed to load user workspace data:', err);
     }
-  }, [idToken, getAuthHeaders, applyServerWorkspace]);
+  }, [idToken, getAuthHeaders]);
 
-  // Hydrate the full 815-material v1.1 Global Catalog immediately on mount via bounded API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchCatalogApi({ limit: 1000, offset: 0 });
-        if (cancelled) return;
-        if (Array.isArray(data.materials) && data.materials.length > 0 && !idToken) {
-          setMaterials(data.materials as RawMaterial[]);
-        }
-        if (Array.isArray(data.regulatoryLimits) && data.regulatoryLimits.length > 0 && !idToken) {
-          setRegulatoryLimits(data.regulatoryLimits as MaterialRegulatoryLimit[]);
-        }
-      } catch {
-        // Fallback to embedded SEED_MATERIALS when offline
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [idToken]);
-
-  // Load workspace from PostgreSQL strictly when authenticated with a verified Firebase ID token
+  // Load user data strictly when authenticated with a verified Firebase ID token
   useEffect(() => {
     reloadWorkspaceData();
   }, [reloadWorkspaceData]);
+
+  // Lazy-load bench modules on navigation
+  useEffect(() => {
+    if (!idToken) return;
+    const headers = getAuthHeaders();
+    if (activeNav === 'evaluations' && evaluations.length === 0) {
+      fetchEvaluationsApi(headers)
+        .then((res) => {
+          if (res.evaluations) setEvaluations(res.evaluations);
+        })
+        .catch(() => {});
+    } else if (activeNav === 'experiments' && experiments.length === 0) {
+      fetchExperimentsApi(headers)
+        .then((res) => {
+          if (res.experiments) setExperiments(res.experiments);
+        })
+        .catch(() => {});
+    } else if (activeNav === 'scent-memory' && scentMemories.length === 0) {
+      fetchScentMemoriesApi(headers)
+        .then((res) => {
+          if (res.scentMemories) setScentMemories(res.scentMemories);
+        })
+        .catch(() => {});
+    }
+  }, [activeNav, idToken, getAuthHeaders, evaluations.length, experiments.length, scentMemories.length]);
 
   // Shelf & Workbench handlers (Global Catalog -> My Shelf -> Current Workbench -> Formula)
   const handleAddToShelf = useCallback(
@@ -713,20 +738,32 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        const res = await fetch(`/api/shelf/${materialId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.workspace) applyServerWorkspace(data.workspace);
+        const res = await addToShelfApi(
+          materialId,
+          {
+            supplierName: payload.supplierName || undefined,
+            supplierProductName: payload.supplierProductName || undefined,
+            workingDilutionPct: payload.workingDilutionPct,
+            personalNotes: payload.personalNotes || undefined,
+            isOnWorkbench: payload.isOnWorkbench,
+            pyramidOverrideCode: payload.pyramidOverrideCode,
+            favorite: payload.favorite,
+          },
+          getAuthHeaders()
+        );
+        if (res.item) {
+          setUserShelfItems((prev) => {
+            const idx = prev.findIndex((s) => s.materialId === materialId);
+            return idx >= 0
+              ? prev.map((s, i) => (i === idx ? res.item : s))
+              : [...prev, res.item];
+          });
         }
       } catch (err) {
-        console.warn('Queued shelf addition locally:', err);
+        console.warn('Shelf addition failed:', err);
       }
     },
-    [idToken, getAuthHeaders, applyServerWorkspace]
+    [idToken, getAuthHeaders]
   );
 
   const handleUpdateShelfItem = useCallback(
@@ -745,7 +782,6 @@ export default function App() {
       setMaterials((prev) =>
         prev.map((m) => {
           if (m.id !== materialId) return m;
-          // Pinning to workbench requires shelf membership
           const nextOnShelf = m.isOnShelf || Boolean(payload.isOnWorkbench);
           return {
             ...m,
@@ -782,25 +818,33 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        const res = await fetch(`/api/shelf/${materialId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.workspace) applyServerWorkspace(data.workspace);
+        const res = await updateShelfItemApi(
+          materialId,
+          {
+            supplierName: payload.supplierName || undefined,
+            supplierProductName: payload.supplierProductName || undefined,
+            workingDilutionPct: payload.workingDilutionPct,
+            personalNotes: payload.personalNotes || undefined,
+            isOnWorkbench: payload.isOnWorkbench,
+            pyramidOverrideCode: payload.pyramidOverrideCode,
+            favorite: payload.favorite,
+          },
+          getAuthHeaders()
+        );
+        if (res.item) {
+          setUserShelfItems((prev) =>
+            prev.map((s) => (s.materialId === materialId ? res.item : s))
+          );
         }
       } catch (err) {
-        console.warn('Queued shelf update locally:', err);
+        console.warn('Shelf update failed:', err);
       }
     },
-    [idToken, getAuthHeaders, applyServerWorkspace]
+    [idToken, getAuthHeaders]
   );
 
   const handleRemoveFromShelf = useCallback(
     async (materialId: number) => {
-      // Removing from Shelf clears Workbench membership
       setMaterials((prev) =>
         prev.map((m) =>
           m.id === materialId ? { ...m, isOnShelf: false, isOnWorkbench: false } : m
@@ -808,39 +852,17 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        const res = await fetch(`/api/shelf/${materialId}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.workspace) applyServerWorkspace(data.workspace);
-        }
+        await removeFromShelfApi(materialId, getAuthHeaders());
+        setUserShelfItems((prev) => prev.filter((s) => s.materialId !== materialId));
       } catch (err) {
-        console.warn('Queued shelf removal locally:', err);
+        console.warn('Shelf removal failed:', err);
       }
     },
-    [idToken, getAuthHeaders, applyServerWorkspace]
+    [idToken, getAuthHeaders]
   );
 
   // Retry handler passed to TabErrorBoundary to recover view state and reload workspace data
   const handleRetryViewData = useCallback(() => {
-    setMaterials((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : SEED_MATERIALS));
-    setFormulas((prev) => {
-      const next = Array.isArray(prev) && prev.length > 0 ? prev : SEED_FORMULAS;
-      setActiveFormulaId((currId) =>
-        next.some((f) => f.id === currId) ? currId : next[0].id
-      );
-      return next;
-    });
-    setAccords((prev) => (Array.isArray(prev) ? prev : SEED_ACCORDS));
-    setRegulatoryLimits((prev) =>
-      Array.isArray(prev) ? prev : SEED_REGULATORY_LIMITS
-    );
-    setScentMemories((prev) => (Array.isArray(prev) ? prev : SEED_SCENT_MEMORIES));
-    setExperiments((prev) => (Array.isArray(prev) ? prev : SEED_EXPERIMENTS));
-    setEvaluations((prev) => (Array.isArray(prev) ? prev : SEED_EVALUATIONS));
-    setUsageReviews((prev) => (Array.isArray(prev) ? prev : SEED_USAGE_REVIEWS));
     void reloadWorkspaceData();
   }, [reloadWorkspaceData]);
 
@@ -904,21 +926,66 @@ export default function App() {
     await signOut(auth);
     setFirebaseUser(null);
     setIdToken(null);
-    // Security memory purge: reset workspace state to clean seed sandbox on sign-out
-    setMaterials(SEED_MATERIALS);
-    setRegulatoryLimits(SEED_REGULATORY_LIMITS);
-    setScentMemories(SEED_SCENT_MEMORIES);
-    setAccords(SEED_ACCORDS);
-    setFormulas(SEED_FORMULAS);
-    setExperiments(SEED_EXPERIMENTS);
-    setEvaluations(SEED_EVALUATIONS);
-    setUsageReviews(SEED_USAGE_REVIEWS);
-    setActiveFormulaId(SEED_FORMULAS[0].id);
-    setActiveVersionLabel('V5');
+    setMaterials([]);
+    setRegulatoryLimits([]);
+    setScentMemories([]);
+    setAccords([]);
+    setFormulas([]);
+    setExperiments([]);
+    setEvaluations([]);
+    setUsageReviews([]);
+    setUserShelfItems([]);
+    setActiveFormulaId(0);
+    setActiveVersionLabel('V1');
+    setSelectedMaterialId(0);
   };
 
-  const activeFormula =
-    formulas.find((f) => f.id === activeFormulaId) || formulas[0] || SEED_FORMULAS[0];
+const BLANK_DRAFT_FORMULA: Formula = {
+  id: 0,
+  projectId: null,
+  projectName: 'Personal Formulation',
+  name: 'New Fragrance Study',
+  status: 'Draft',
+  description: 'Initial formulation draft session.',
+  intendedProduct: 'Eau de Parfum (20% conc.)',
+  ifraCategory: 'Category 4 (Fine Fragrance)',
+  finalProductConcentration: 20,
+  targetBrief: 'Harmonious opening with balanced heart structure and enduring drydown.',
+  targetFamilies: ['Green', 'Citrus', 'Woody'],
+  targetFacets: { Green: 7, Woody: 6, Citrus: 5, Musky: 5 },
+  targetIntensity: 7,
+  targetTexture: 'Fresh, airy with botanical clarity',
+  targetAtmosphere: 'Luminous morning botanical garden',
+  targetTemperature: 'Cool',
+  targetColor: '#2E6F40',
+  targetMood: 'Uplifting & focused',
+  targetDiffusion: 7,
+  targetEvolution: 'Crisp green opening yielding to a radiant transparent woody heart',
+  targetDrydown: 'Clean skin-scent warmth with subtle resinous cedar persistence',
+  materialsToAvoid: [],
+  isFavorite: false,
+  tags: ['Study', 'Custom'],
+  activeVersionLabel: 'V1',
+  versions: [
+    {
+      id: 0,
+      formulaId: 0,
+      parentVersionId: null,
+      versionLabel: 'V1',
+      status: 'Draft',
+      versionNotes: 'Initial formulation draft',
+      maturationDays: 14,
+      items: [],
+      createdAt: new Date().toISOString().slice(0, 10),
+    },
+  ],
+  createdAt: new Date().toISOString().slice(0, 10),
+  updatedAt: new Date().toISOString().slice(0, 10),
+};
+
+  const activeFormula: Formula =
+    formulas.find((f) => f.id === activeFormulaId) || formulas[0] || BLANK_DRAFT_FORMULA;
+
 
   // Handlers for PostgreSQL mutations with optimistic updates
   const handleSaveFormulaVersion = async (
@@ -1797,24 +1864,30 @@ export default function App() {
                         <span className="font-mono-tabular">Forest Project</span>
                       </div>
                       <div className="space-y-2 text-xs">
-                        {activeFormula.versions.slice(-3).reverse().map((v) => (
-                          <div
-                            key={v.id}
-                            className="p-3 rounded bg-[#0B0E14] border border-slate-800"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono-tabular font-semibold text-emerald-400">
-                                {activeFormula.name} — {v.versionLabel}
-                              </span>
-                              <span className="text-[11px] text-slate-400">
-                                {v.status} · {v.createdAt}
-                              </span>
+                        {activeFormula ? (
+                          activeFormula.versions.slice(-3).reverse().map((v) => (
+                            <div
+                              key={v.id}
+                              className="p-3 rounded bg-[#0B0E14] border border-slate-800"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono-tabular font-semibold text-emerald-400">
+                                  {activeFormula.name} — {v.versionLabel}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {v.status} · {v.createdAt}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
+                                {v.versionNotes}
+                              </p>
                             </div>
-                            <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
-                              {v.versionNotes}
-                            </p>
+                          ))
+                        ) : (
+                          <div className="p-3 rounded bg-[#0B0E14] border border-slate-800 text-slate-500 italic">
+                            No active formula loaded.
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                     <button
@@ -2047,6 +2120,7 @@ export default function App() {
                 }
 
                 const resolvedTarget = target || activeFormula;
+                if (!resolvedTarget) return;
                 const currentVer =
                   resolvedTarget.versions.find(
                     (v) => v.versionLabel === resolvedTarget.activeVersionLabel
@@ -2153,6 +2227,7 @@ export default function App() {
                 }
 
                 const resolvedTarget = target || activeFormula;
+                if (!resolvedTarget) return;
                 const currentVer =
                   resolvedTarget.versions.find(
                     (v) => v.versionLabel === resolvedTarget.activeVersionLabel
@@ -2327,6 +2402,7 @@ export default function App() {
                 branchNotes,
                 modifiedItems
               ) => {
+                if (!activeFormula) return;
                 await handleSaveFormulaVersion(activeFormula, {
                   versionLabel: branchLabel,
                   parentVersionId: null,

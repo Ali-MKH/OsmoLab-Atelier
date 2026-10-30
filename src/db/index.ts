@@ -116,4 +116,26 @@ export function requirePostgresDb(): NodePgDatabase<typeof schema> {
   return db;
 }
 
+export class CatalogNotInitializedError extends Error {
+  public readonly statusCode: number;
+  public readonly code: string;
+  constructor(
+    message = 'Canonical v1.1 Global Catalog is not initialized in the database.',
+    statusCode = 503
+  ) {
+    super(message);
+    this.name = 'CatalogNotInitializedError';
+    this.code = 'CATALOG_NOT_INITIALIZED';
+    this.statusCode = statusCode;
+  }
+}
+
+export function isCatalogAutoBootstrapEnabled(): boolean {
+  const raw = (process.env.CATALOG_AUTO_BOOTSTRAP ?? '').trim().toLowerCase();
+  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
+  if (raw === 'false' || raw === '0' || raw === 'no') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
+
 

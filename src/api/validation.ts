@@ -168,13 +168,13 @@ export function validateCatalogQuery(
   const hasExplicitPagination =
     query.limit !== undefined || query.offset !== undefined;
 
-  let limit = 1000;
+  let limit = 50;
   if (query.limit !== undefined && query.limit !== '') {
     const parsedLimit = Number(query.limit);
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 1000) {
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
       details.push({
         field: 'limit',
-        message: 'limit must be an integer between 1 and 1000.',
+        message: 'limit must be an integer between 1 and 100.',
         code: 'OUT_OF_RANGE',
       });
     } else {
@@ -1006,6 +1006,25 @@ export function formatStandardizedApiError(
       body: {
         error: error.message,
         code: error.code,
+        details: [],
+      },
+    };
+  }
+  if (
+    error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error as { name?: string }).name === 'CatalogNotInitializedError'
+  ) {
+    const statusCode =
+      'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : 503;
+    return {
+      statusCode,
+      body: {
+        error: error instanceof Error ? error.message : fallbackMessage,
+        code: 'CATALOG_NOT_INITIALIZED',
         details: [],
       },
     };

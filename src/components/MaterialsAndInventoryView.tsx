@@ -10,7 +10,8 @@ import {
   ScentMemoryRecord,
   VolatilityTier,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-taxonomy';
+import { LoadState } from '../api/client';
 import { normalizeMaterialSynonyms } from '../domain/navigation-state';
 import { PyramidStepIcon, getVolatilityBadgeConfig } from './PyramidStepIcon';
 import { DualRegulatorySlider } from './DualRegulatorySlider';
@@ -49,10 +50,25 @@ import {
 interface MaterialsAndInventoryViewProps {
   mode: 'materials' | 'accords';
   materials: RawMaterial[];
-  selectedMaterialId: number;
+  shelfMaterials?: RawMaterial[];
+  selectedMaterialId: number | null;
   regulatoryLimits: MaterialRegulatoryLimit[];
   scentMemories: ScentMemoryRecord[];
   usageReviews: MaterialUsageReview[];
+  catalogTotal?: number;
+  catalogHasMore?: boolean;
+  catalogLoadState?: LoadState;
+  catalogError?: string | null;
+  shelfLoadState?: LoadState;
+  onCatalogQueryChange?: (query: {
+    q: string;
+    family: string;
+    origin: string;
+    pyramidCode: string;
+  }) => void;
+  onLoadMoreCatalog?: () => void;
+  onRetryCatalog?: () => void;
+  onLoadStarterOrgan?: () => Promise<void>;
   onToggleWorkbenchMaterial?: (id: number) => void;
   onUpdateMaterialNotes?: (id: number, notes: string) => void;
   onAddToShelf?: (
@@ -115,10 +131,20 @@ interface MaterialsAndInventoryViewProps {
 export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps> = ({
   mode,
   materials,
+  shelfMaterials,
   selectedMaterialId,
   regulatoryLimits,
   scentMemories,
   usageReviews,
+  catalogTotal,
+  catalogHasMore = false,
+  catalogLoadState = 'ready',
+  catalogError = null,
+  shelfLoadState = 'ready',
+  onCatalogQueryChange,
+  onLoadMoreCatalog,
+  onRetryCatalog,
+  onLoadStarterOrgan,
   accords,
   formulas,
   educationalPromptsEnabled,
@@ -211,9 +237,20 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     setTimeout(() => setToastMsg(null), 2200);
   };
 
+  const [isLoadingStarterOrgan, setIsLoadingStarterOrgan] = useState(false);
+
+  useEffect(() => {
+    if (!onCatalogQueryChange) return;
+    onCatalogQueryChange({
+      q: searchQuery,
+      family: familyFilter,
+      origin: originFilter,
+      pyramidCode: pyramidFilter,
+    });
+  }, [searchQuery, familyFilter, originFilter, pyramidFilter, onCatalogQueryChange]);
+
   const isMaterialOnShelf = (mat: RawMaterial): boolean => {
-    if (mat.isOnShelf !== undefined) return Boolean(mat.isOnShelf);
-    return mat.isOnWorkbench !== false;
+    return Boolean(mat.isOnShelf);
   };
 
   const isMaterialOnWorkbench = (mat: RawMaterial): boolean => {
@@ -2600,7 +2637,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   };
 
   // 2. RAW MATERIALS PALETTE: MY WORKBENCH vs MY SHELF vs CATALOG LIBRARY
-  const filteredMaterials = materials.filter((m) => {
+  const activeShelfSource = shelfMaterials ?? materials.filter((m) => isMaterialOnShelf(m));
+  const sourceList =
+    paletteViewTab === 'catalog' ? materials : activeShelfSource;
+
+  const filteredMaterials = sourceList.filter((m) => {
     const isOnShelf = isMaterialOnShelf(m);
     const isOnWorkbench = isMaterialOnWorkbench(m);
     if (paletteViewTab === 'workbench' && !isOnWorkbench) {
@@ -2609,6 +2650,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     if (paletteViewTab === 'shelf' && !isOnShelf) {
       return false;
     }
+    // When onCatalogQueryChange is wired and paletteViewTab === 'catalog',
+    // server-side query already filters /api/catalog, though client filter acts as a consistent guard
     const matchFam =
       familyFilter === 'All' ||
       m.primaryFamily.toLowerCase() === familyFilter.toLowerCase();
@@ -2632,8 +2675,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     return matchFam && matchOrig && matchPyramid && matchQ;
   });
 
-  const workbenchCount = materials.filter((m) => isMaterialOnWorkbench(m)).length;
-  const shelfCount = materials.filter((m) => isMaterialOnShelf(m)).length;
+  const workbenchCount = activeShelfSource.filter((m) => isMaterialOnWorkbench(m)).length;
+  const shelfCount = activeShelfSource.length;
+  const effectiveCatalogTotal = catalogTotal ?? materials.length;
 
   return (
     <div className="space-y-6">
@@ -2682,7 +2726,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
           <ShelfFilterBar
             activeTab={paletteViewTab}
             workbenchOnlyInShelf={paletteViewTab === 'workbench'}
-            catalogCount={materials.length}
+            catalogCount={effectiveCatalogTotal}
             shelfCount={shelfCount}
             workbenchCount={workbenchCount}
             onSelectTab={(nextTab) => {
@@ -2705,34 +2749,109 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             onPyramidChange={setPyramidFilter}
           />
 
+          {/* Server Pagination Status Header for Catalog */}
+          {paletteViewTab === 'catalog' && (
+            <div
+              data-testid="catalog-pagination-status"
+              className="flex items-center justify-between px-1 text-[11px] font-mono-tabular text-slate-400"
+            >
+              <span>
+                Showing {filteredMaterials.length} of {effectiveCatalogTotal} catalog materials
+              </span>
+              {catalogLoadState === 'loading' && (
+                <span className="text-emerald-400">Syncing catalog...</span>
+              )}
+            </div>
+          )}
+
           {/* Compact Materials List */}
           <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
-            {filteredMaterials.length === 0 ? (
+            {paletteViewTab === 'catalog' && catalogLoadState === 'error' ? (
+              <div
+                data-testid="catalog-error-state"
+                className="p-6 text-center bg-[#0B0E14] border border-rose-500/40 rounded-lg text-slate-300 text-xs space-y-2.5"
+              >
+                <p className="font-semibold text-rose-400">Catalog unavailable</p>
+                <p className="text-[11px] text-slate-400">
+                  {catalogError || 'Unable to reach /api/catalog. Run npm run catalog:import or retry.'}
+                </p>
+                {onRetryCatalog && (
+                  <button
+                    type="button"
+                    onClick={onRetryCatalog}
+                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors"
+                  >
+                    Retry Catalog Load
+                  </button>
+                )}
+              </div>
+            ) : paletteViewTab === 'catalog' &&
+              catalogLoadState === 'loading' &&
+              filteredMaterials.length === 0 ? (
+              <div
+                data-testid="catalog-loading-skeleton"
+                className="space-y-2 py-2"
+              >
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="h-12 rounded-lg bg-[#0B0E14] border border-slate-800/80 animate-pulse px-3 flex items-center justify-between"
+                  >
+                    <div className="h-3 w-40 bg-slate-800 rounded" />
+                    <div className="h-3 w-16 bg-slate-800 rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredMaterials.length === 0 ? (
               <div className="p-8 text-center bg-[#0B0E14] border border-slate-800 rounded-lg text-slate-400 text-xs">
                 {paletteViewTab === 'workbench' || paletteViewTab === 'shelf' ? (
-                  <div className="space-y-2">
-                    <p className="text-slate-300 font-medium">
+                  <div className="space-y-3">
+                    <p className="text-slate-200 font-semibold">
                       {paletteViewTab === 'workbench'
                         ? 'My Workbench is currently empty.'
                         : 'My Shelf is currently empty.'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
-                      Switch to &quot;Catalog&quot; to browse the 815-material dictionary and add materials to your Shelf or Workbench.
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      Browse the 815-material Catalog to add ingredients you own, or load the 22-material Starter Organ to begin formulating right away.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setPaletteViewTab('catalog')}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs transition-colors"
-                    >
-                      Browse Catalog →
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPaletteViewTab('catalog')}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded text-xs transition-colors"
+                      >
+                        Browse Catalog →
+                      </button>
+                      {onLoadStarterOrgan && (
+                        <button
+                          type="button"
+                          data-testid="load-starter-organ-btn"
+                          disabled={isLoadingStarterOrgan}
+                          onClick={async () => {
+                            setIsLoadingStarterOrgan(true);
+                            try {
+                              await onLoadStarterOrgan();
+                              triggerToast('Loaded 22-material Starter Organ onto My Shelf');
+                            } finally {
+                              setIsLoadingStarterOrgan(false);
+                            }
+                          }}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium rounded text-xs transition-colors"
+                        >
+                          {isLoadingStarterOrgan
+                            ? 'Loading Starter Organ...'
+                            : 'Load Starter Organ (22 Notes)'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <p>No materials matching &quot;{searchQuery}&quot;</p>
+                  <p>No materials match current filters{searchQuery ? ` ("${searchQuery}")` : ''}.</p>
                 )}
               </div>
             ) : (
-              filteredMaterials.map((mat) => {
+              <>
+              {filteredMaterials.map((mat) => {
                 const isSelected = mat.id === selectedMaterial?.id;
                 const isOnShelf = isMaterialOnShelf(mat);
                 const isOnWorkbench = isMaterialOnWorkbench(mat);
@@ -2859,7 +2978,29 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
                   </div>
                 );
-              })
+              })}
+
+              {paletteViewTab === 'catalog' && catalogHasMore && onLoadMoreCatalog && (
+                <div className="pt-2 pb-1">
+                  <button
+                    type="button"
+                    data-testid="catalog-load-more-btn"
+                    disabled={catalogLoadState === 'loading'}
+                    onClick={onLoadMoreCatalog}
+                    className="w-full py-2 px-3 rounded-lg bg-[#0B0E14] hover:bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>
+                      {catalogLoadState === 'loading'
+                        ? 'Loading more catalog materials...'
+                        : `Load More Materials (${Math.max(
+                            0,
+                            effectiveCatalogTotal - filteredMaterials.length
+                          )} remaining)`}
+                    </span>
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

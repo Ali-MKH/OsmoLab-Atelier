@@ -12,10 +12,13 @@ import {
 import {
   fetchFullWorkspace,
   fetchBootstrapInfo,
+  getCatalogReadiness,
+  ensureCatalogReadyAtStartup,
   queryCatalogMaterials,
   getCatalogMaterialDetail,
   getCatalogMaterialRegulatoryDossier,
   toggleUserWorkbenchPin,
+  loadStarterOrganForUser,
   createMaterialInDb,
   saveFormulaAndVersionInDb,
   addExperimentEntryInDb,
@@ -29,6 +32,12 @@ import {
   addToUserShelf,
   updateUserShelfItem,
   removeFromUserShelf,
+  getUserFormulas,
+  getUserFormulaById,
+  getUserAccords,
+  getUserExperiments,
+  getUserEvaluations,
+  getUserScentMemories,
 } from './src/db/workspace-repo.ts';
 import {
   formatStandardizedApiError,
@@ -62,7 +71,7 @@ function sendSafeRouteError(
   return res.status(statusCode).json(body);
 }
 
-async function startServer() {
+export async function createAppServer(options?: { enableFrontendMiddleware?: boolean }) {
   const app = express();
   app.disable('x-powered-by');
 
@@ -130,7 +139,23 @@ async function startServer() {
     res.sendFile(path.join(__dirname, 'public', 'sw.js'));
   });
 
-  // 0. Public Zero-Trust Security Posture Verification Endpoint (returns policy metadata, zero user data)
+  // 0a. Safe Data & Catalog Health Endpoint (no credentials, hostnames, tokens, or user identifiers)
+  app.get('/api/health/data', async (_req, res) => {
+    try {
+      const health = await getCatalogReadiness();
+      res.json(health);
+    } catch {
+      res.status(503).json({
+        persistenceMode: 'postgres',
+        databaseReady: false,
+        catalogReady: false,
+        catalogCount: 0,
+        catalogVersion: 'v1.1',
+      });
+    }
+  });
+
+  // 0b. Public Zero-Trust Security Posture Verification Endpoint (returns policy metadata, zero user data)
   app.get('/api/security/audit', (_req, res) => {
     res.json({
       status: 'HARDENED',
@@ -160,7 +185,7 @@ async function startServer() {
     }
   });
 
-  // 2. Bounded Global Catalog Endpoint (supports search, family, origin, noteRole, pyramidCode, shelfOnly, workbenchOnly, limit, offset)
+  // 2. Bounded Global Catalog Endpoint (supports q/search, family, origin, noteRole, pyramidCode, shelfOnly, workbenchOnly, limit, offset)
   app.get('/api/catalog', async (req, res) => {
     try {
       const validated = validateCatalogQuery(
@@ -244,6 +269,18 @@ async function startServer() {
     }
   });
 
+  // Explicit opt-in starter organ loader ("Load Starter Organ")
+  app.post('/api/shelf/starter-organ', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const uid = req.workspaceUid!;
+      assertStrictTenantPayload(req.body || {}, uid);
+      const result = await loadStarterOrganForUser(uid);
+      res.json(result);
+    } catch (error: unknown) {
+      sendSafeRouteError(res, error, 'Failed to load starter organ');
+    }
+  });
+
   app.post('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
@@ -254,8 +291,7 @@ async function startServer() {
       );
       const validated = validateShelfMutationPayload(req.body || {});
       const item = await addToUserShelf(uid, materialId, validated);
-      const shelf = await getUserShelf(uid);
-      res.json({ item, shelf });
+      res.json({ item });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
     }
@@ -274,11 +310,7 @@ async function startServer() {
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await addToUserShelf(uid, materialId, validated);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ item, shelf: workspace.userShelf, workspace });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
       }
@@ -298,11 +330,7 @@ async function startServer() {
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await updateUserShelfItem(uid, materialId, validated);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ item, shelf: workspace.userShelf, workspace });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update My Shelf item');
       }
@@ -329,8 +357,7 @@ async function startServer() {
           materialId,
           isOnWorkbench
         );
-        const shelf = await getUserShelf(uid);
-        res.json({ item, shelf });
+        res.json({ item });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update Workbench pin');
       }
@@ -348,11 +375,7 @@ async function startServer() {
           'materialId'
         );
         const result = await removeFromUserShelf(uid, materialId);
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json({ ...result, shelf: workspace.userShelf, workspace });
+        res.json(result);
       } catch (error: unknown) {
         sendSafeRouteError(
           res,
@@ -369,15 +392,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateCreateMaterialPayload(req.body);
-      await createMaterialInDb(
+      const material = await createMaterialInDb(
         uid,
         validated as Parameters<typeof createMaterialInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ material });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to create material');
     }
@@ -387,8 +406,8 @@ async function startServer() {
   app.get('/api/formulas', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ formulas: ws.formulas, total: ws.formulas.length });
+      const formulasList = await getUserFormulas(uid);
+      res.json({ formulas: formulasList, total: formulasList.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load formulas');
     }
@@ -404,11 +423,7 @@ async function startServer() {
           req.params.formulaId,
           'formulaId'
         );
-        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-        const formula = ws.formulas.find((f) => f.id === formulaId);
-        if (!formula) {
-          throw new Error(`NotFound: Formula #${formulaId} not found.`);
-        }
+        const formula = await getUserFormulaById(uid, formulaId);
         res.json({ formula });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to load formula');
@@ -426,11 +441,7 @@ async function startServer() {
           req.params.formulaId,
           'formulaId'
         );
-        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-        const formula = ws.formulas.find((f) => f.id === formulaId);
-        if (!formula) {
-          throw new Error(`NotFound: Formula #${formulaId} not found.`);
-        }
+        const formula = await getUserFormulaById(uid, formulaId);
         res.json({
           formulaId: formula.id,
           activeVersionLabel: formula.activeVersionLabel,
@@ -452,16 +463,20 @@ async function startServer() {
       const { formula, version } = validateSaveFormulaPayload(req.body);
       assertStrictTenantPayload(formula, uid);
       assertStrictTenantPayload(version, uid);
-      await saveFormulaAndVersionInDb(
+      const saved = await saveFormulaAndVersionInDb(
         uid,
         formula as Parameters<typeof saveFormulaAndVersionInDb>[1],
         version as Parameters<typeof saveFormulaAndVersionInDb>[2]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      const hydratedFormula = await getUserFormulaById(uid, saved.formulaId);
+      const hydratedVersion =
+        hydratedFormula.versions.find((v) => v.id === saved.formulaVersionId) ||
+        hydratedFormula.versions[hydratedFormula.versions.length - 1] ||
+        null;
+      res.json({
+        formula: hydratedFormula,
+        version: hydratedVersion,
+      });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save formula version');
     }
@@ -474,13 +489,10 @@ async function startServer() {
   app.get('/api/experiments', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
         : null;
-      const items = formulaIdParam
-        ? ws.experiments.filter((e) => e.formulaId === formulaIdParam)
-        : ws.experiments;
+      const items = await getUserExperiments(uid, formulaIdParam);
       res.json({ experiments: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load experiments');
@@ -492,15 +504,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateExperimentPayload(req.body);
-      await addExperimentEntryInDb(
+      const experiment = await addExperimentEntryInDb(
         uid,
         validated as Parameters<typeof addExperimentEntryInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ experiment });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add experiment entry');
     }
@@ -510,13 +518,10 @@ async function startServer() {
   app.get('/api/evaluations', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
         : null;
-      const items = formulaIdParam
-        ? ws.evaluations.filter((e) => e.formulaId === formulaIdParam)
-        : ws.evaluations;
+      const items = await getUserEvaluations(uid, formulaIdParam);
       res.json({ evaluations: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load evaluations');
@@ -528,15 +533,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateEvaluationPayload(req.body);
-      await addEvaluationInDb(
+      const evaluation = await addEvaluationInDb(
         uid,
         validated as Parameters<typeof addEvaluationInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ evaluation });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save sensory evaluation');
     }
@@ -546,13 +547,10 @@ async function startServer() {
   app.get('/api/memories', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const materialIdParam = req.query.materialId
         ? validatePositiveIntId(req.query.materialId, 'materialId')
         : null;
-      const items = materialIdParam
-        ? ws.scentMemories.filter((m) => m.materialId === materialIdParam)
-        : ws.scentMemories;
+      const items = await getUserScentMemories(uid, materialIdParam);
       res.json({ scentMemories: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load scent memories');
@@ -564,15 +562,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateScentMemoryPayload(req.body);
-      await upsertScentMemoryInDb(
+      const memory = await upsertScentMemoryInDb(
         uid,
         validated as Parameters<typeof upsertScentMemoryInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ memory });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update scent memory');
     }
@@ -582,8 +576,8 @@ async function startServer() {
   app.get('/api/accords', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
-      res.json({ accords: ws.accords, total: ws.accords.length });
+      const accordsList = await getUserAccords(uid);
+      res.json({ accords: accordsList, total: accordsList.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load accords');
     }
@@ -594,15 +588,11 @@ async function startServer() {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateAccordPayload(req.body);
-      await createAccordInDb(
+      const accord = await createAccordInDb(
         uid,
         validated as Parameters<typeof createAccordInDb>[1]
       );
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      res.json({ accord });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save accord');
     }
@@ -620,16 +610,12 @@ async function startServer() {
           'accordId'
         );
         const validated = validateAccordPayload(req.body);
-        await updateAccordAndCreateVersion(
+        const accord = await updateAccordAndCreateVersion(
           uid,
           accordId,
           validated as Parameters<typeof updateAccordAndCreateVersion>[2]
         );
-        const workspace = await fetchFullWorkspace(
-          uid,
-          req.workspaceEmail || ''
-        );
-        res.json(workspace);
+        res.json({ accord });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to create accord version');
       }
@@ -641,12 +627,8 @@ async function startServer() {
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      await updateUserSettingsInDb(uid, req.body);
-      const workspace = await fetchFullWorkspace(
-        uid,
-        req.workspaceEmail || ''
-      );
-      res.json(workspace);
+      const settings = await updateUserSettingsInDb(uid, req.body);
+      res.json({ settings });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update settings');
     }
@@ -957,24 +939,36 @@ Student Request: ${userPrompt}`;
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false, ws: false },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  if (options?.enableFrontendMiddleware !== false) {
+    if (process.env.NODE_ENV !== 'production') {
+      const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: false, ws: false },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(__dirname, 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
 
+  return app;
+}
+
+async function startServer() {
+  await ensureCatalogReadyAtStartup();
+  const app = await createAppServer({ enableFrontendMiddleware: true });
   const PORT = 3000;
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Perfumery Formulation Platform listening on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+if (!process.env.NODE_TEST_CONTEXT) {
+  startServer();
+}
+
+

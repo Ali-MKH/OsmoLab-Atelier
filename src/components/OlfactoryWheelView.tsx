@@ -8,7 +8,7 @@ import {
   RawMaterial,
   SensoryEvaluation,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-taxonomy';
 import {
   Plus,
   Layers,

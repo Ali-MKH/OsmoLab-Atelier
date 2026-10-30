@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search } from 'lucide-react';
-import { OLFACTORY_WHEEL_FAMILIES } from '../../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../../domain/olfactory-taxonomy';
 
 interface MaterialFiltersProps {
   searchQuery: string;
