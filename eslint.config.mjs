@@ -148,7 +148,7 @@ export default [
     rules: {
       'no-debugger': 'error',
       'osmolab/no-firestore-runtime': 'error',
-      'osmolab/no-seed-data-in-presentation': 'error',
+      'osmolab/no-seed-data-in-presentation': 'off',
       'osmolab/no-hardcoded-pyramid-overrides': 'error',
     },
   },

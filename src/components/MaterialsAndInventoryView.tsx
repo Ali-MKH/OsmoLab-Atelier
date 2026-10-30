@@ -10,7 +10,7 @@ import {
   ScentMemoryRecord,
   VolatilityTier,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-taxonomy';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
 import { LoadState } from '../api/client';
 import { normalizeMaterialSynonyms } from '../domain/navigation-state';
 import { PyramidStepIcon, getVolatilityBadgeConfig } from './PyramidStepIcon';

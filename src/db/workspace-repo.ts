@@ -656,7 +656,6 @@ export async function ensureCatalogReadyAtStartup(): Promise<DataHealthResponse>
 }
 
 async function assertPostgresCatalogInitialized(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   activeDb: any
 ): Promise<number> {
   const [row] = await activeDb
@@ -712,7 +711,6 @@ export async function importGlobalCatalogV11(): Promise<CatalogImportSummary> {
 }
 
 async function upsertGlobalCatalogInTransaction(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   bundle = loadGlobalCatalogV11()
 ): Promise<CatalogImportSummary> {
@@ -4193,7 +4191,6 @@ export async function queryCatalogMaterials(
       )
     : eq(materials.scope, 'GLOBAL');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const conditions: any[] = [scopeClause];
 
   let shelfByMatId = new Map<number, UserShelfItem>();

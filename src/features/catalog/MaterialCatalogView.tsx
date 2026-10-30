@@ -26,8 +26,8 @@ const AutonomousMaterialCatalogView: React.FC<MaterialCatalogViewProps> = (props
     fetchCatalogApi({ limit: 50, offset: 0 })
       .then((res) => {
         if (!isCurrent) return;
-        if (Array.isArray(res.items)) {
-          setCatalogMaterials(res.items);
+        if (Array.isArray(res.materials)) {
+          setCatalogMaterials(res.materials);
         }
         if (Array.isArray(res.regulatoryLimits)) {
           setCatalogLimits(res.regulatoryLimits);

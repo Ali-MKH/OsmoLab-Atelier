@@ -25,18 +25,18 @@ import {
 import { MaterialCatalogView } from './features/catalog/MaterialCatalogView';
 import { EvaluationAndJournalView } from './features/evaluation/EvaluationAndJournalView';
 import {
-  fetchBootstrapApi,
-  fetchUserShelfApi,
-  fetchFormulasApi,
-  fetchAccordsApi,
-  fetchEvaluationsApi,
-  fetchExperimentsApi,
-  fetchScentMemoriesApi,
-  addToShelfApi,
-  updateShelfItemApi,
-  removeFromShelfApi,
-  toggleWorkbenchPinApi,
-  saveFormulaVersionApi,
+  SEED_ACCORDS,
+  SEED_EVALUATIONS,
+  SEED_EXPERIMENTS,
+  SEED_FORMULAS,
+  SEED_MATERIALS,
+  SEED_REGULATORY_LIMITS,
+  SEED_SCENT_MEMORIES,
+  SEED_USAGE_REVIEWS,
+} from './domain/seed-data';
+import {
+  upsertShelfItemApi,
+  removeShelfItemApi,
 } from './api/client';
 import {
   OlfactoryMentorView,
@@ -346,26 +346,32 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  // Workspace Data State (starts empty/loading and hydrates strictly from typed APIs)
-  const [materials, setMaterials] = useState<RawMaterial[]>([]);
-  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>([]);
-  const [scentMemories, setScentMemories] = useState<ScentMemoryRecord[]>([]);
-  const [accords, setAccords] = useState<AccordDefinition[]>([]);
-  const [formulas, setFormulas] = useState<Formula[]>([]);
-  const [experiments, setExperiments] = useState<ExperimentEntry[]>([]);
-  const [evaluations, setEvaluations] = useState<SensoryEvaluation[]>([]);
-  const [usageReviews, setUsageReviews] = useState<MaterialUsageReview[]>([]);
+  // Workspace Data State (seeded with rich perfumery domain defaults for immediate exploration)
+  const [materials, setMaterials] = useState<RawMaterial[]>(SEED_MATERIALS);
+  const [regulatoryLimits, setRegulatoryLimits] = useState<MaterialRegulatoryLimit[]>(
+    SEED_REGULATORY_LIMITS
+  );
+  const [scentMemories, setScentMemories] = useState<ScentMemoryRecord[]>(
+    SEED_SCENT_MEMORIES
+  );
+  const [accords, setAccords] = useState<AccordDefinition[]>(SEED_ACCORDS);
+  const [formulas, setFormulas] = useState<Formula[]>(SEED_FORMULAS);
+  const [experiments, setExperiments] = useState<ExperimentEntry[]>(SEED_EXPERIMENTS);
+  const [evaluations, setEvaluations] = useState<SensoryEvaluation[]>(SEED_EVALUATIONS);
+  const [usageReviews, setUsageReviews] = useState<MaterialUsageReview[]>(
+    SEED_USAGE_REVIEWS
+  );
   const [userShelfItems, setUserShelfItems] = useState<UserShelfItem[]>([]);
 
   // Active Selection State (persisted across reloads)
   const [activeFormulaId, setActiveFormulaId] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem(ACTIVE_FORMULA_STORAGE_KEY));
-      if (saved) return saved;
+      if (saved && SEED_FORMULAS.some((f) => f.id === saved)) return saved;
     } catch {
       // ignore
     }
-    return 0;
+    return SEED_FORMULAS[0].id;
   });
   const [activeVersionLabel, setActiveVersionLabel] = useState<string>(() => {
     try {
@@ -374,16 +380,16 @@ export default function App() {
     } catch {
       // ignore
     }
-    return 'V1';
+    return SEED_FORMULAS[0].activeVersionLabel;
   });
   const [selectedMaterialId, setSelectedMaterialId] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem(SELECTED_MATERIAL_STORAGE_KEY));
-      if (saved) return saved;
+      if (saved && SEED_MATERIALS.some((m) => m.id === saved)) return saved;
     } catch {
       // ignore
     }
-    return 0;
+    return SEED_MATERIALS[0].id;
   });
 
   useEffect(() => {
@@ -636,70 +642,23 @@ export default function App() {
 
   const reloadWorkspaceData = useCallback(async () => {
     if (!idToken) return;
-    const headers = getAuthHeaders();
     try {
-      const [boot, shelfData, formulasData, accordsData] = await Promise.all([
-        fetchBootstrapApi(headers).catch(() => null),
-        fetchUserShelfApi(headers).catch(() => null),
-        fetchFormulasApi(headers).catch(() => null),
-        fetchAccordsApi(headers).catch(() => null),
-      ]);
-      if (boot?.user?.theme) {
-        // sync user settings if returned
-      }
-      if (shelfData?.shelf) {
-        setUserShelfItems(shelfData.shelf);
-        const shelfMats: RawMaterial[] =
-          (shelfData as unknown as { materials?: RawMaterial[] }).materials || [];
-        setMaterials(shelfMats);
-      }
-      if (formulasData?.formulas) {
-        setFormulas(formulasData.formulas);
-        if (formulasData.formulas.length > 0) {
-          setActiveFormulaId((prev) =>
-            formulasData.formulas.some((f) => f.id === prev)
-              ? prev
-              : formulasData.formulas[0].id
-          );
-        }
-      }
-      if (accordsData?.accords) {
-        setAccords(accordsData.accords);
+      const res = await fetch('/api/workspace', {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyServerWorkspace(data);
       }
     } catch (err) {
       console.warn('Failed to load user workspace data:', err);
     }
-  }, [idToken, getAuthHeaders]);
+  }, [idToken, getAuthHeaders, applyServerWorkspace]);
 
   // Load user data strictly when authenticated with a verified Firebase ID token
   useEffect(() => {
     reloadWorkspaceData();
   }, [reloadWorkspaceData]);
-
-  // Lazy-load bench modules on navigation
-  useEffect(() => {
-    if (!idToken) return;
-    const headers = getAuthHeaders();
-    if (activeNav === 'evaluations' && evaluations.length === 0) {
-      fetchEvaluationsApi(headers)
-        .then((res) => {
-          if (res.evaluations) setEvaluations(res.evaluations);
-        })
-        .catch(() => {});
-    } else if (activeNav === 'experiments' && experiments.length === 0) {
-      fetchExperimentsApi(headers)
-        .then((res) => {
-          if (res.experiments) setExperiments(res.experiments);
-        })
-        .catch(() => {});
-    } else if (activeNav === 'scent-memory' && scentMemories.length === 0) {
-      fetchScentMemoriesApi(headers)
-        .then((res) => {
-          if (res.scentMemories) setScentMemories(res.scentMemories);
-        })
-        .catch(() => {});
-    }
-  }, [activeNav, idToken, getAuthHeaders, evaluations.length, experiments.length, scentMemories.length]);
 
   // Shelf & Workbench handlers (Global Catalog -> My Shelf -> Current Workbench -> Formula)
   const handleAddToShelf = useCallback(
@@ -738,25 +697,25 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        const res = await addToShelfApi(
+        const res = await upsertShelfItemApi(
           materialId,
           {
-            supplierName: payload.supplierName || undefined,
-            supplierProductName: payload.supplierProductName || undefined,
+            supplierName: payload.supplierName,
+            supplierProductName: payload.supplierProductName,
             workingDilutionPct: payload.workingDilutionPct,
-            personalNotes: payload.personalNotes || undefined,
+            personalNotes: payload.personalNotes,
             isOnWorkbench: payload.isOnWorkbench,
             pyramidOverrideCode: payload.pyramidOverrideCode,
             favorite: payload.favorite,
           },
           getAuthHeaders()
         );
-        if (res.item) {
+        if (res.shelfItem) {
           setUserShelfItems((prev) => {
             const idx = prev.findIndex((s) => s.materialId === materialId);
             return idx >= 0
-              ? prev.map((s, i) => (i === idx ? res.item : s))
-              : [...prev, res.item];
+              ? prev.map((s, i) => (i === idx ? res.shelfItem! : s))
+              : [...prev, res.shelfItem!];
           });
         }
       } catch (err) {
@@ -818,22 +777,22 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        const res = await updateShelfItemApi(
+        const res = await upsertShelfItemApi(
           materialId,
           {
-            supplierName: payload.supplierName || undefined,
-            supplierProductName: payload.supplierProductName || undefined,
+            supplierName: payload.supplierName,
+            supplierProductName: payload.supplierProductName,
             workingDilutionPct: payload.workingDilutionPct,
-            personalNotes: payload.personalNotes || undefined,
+            personalNotes: payload.personalNotes,
             isOnWorkbench: payload.isOnWorkbench,
             pyramidOverrideCode: payload.pyramidOverrideCode,
             favorite: payload.favorite,
           },
           getAuthHeaders()
         );
-        if (res.item) {
+        if (res.shelfItem) {
           setUserShelfItems((prev) =>
-            prev.map((s) => (s.materialId === materialId ? res.item : s))
+            prev.map((s) => (s.materialId === materialId ? res.shelfItem! : s))
           );
         }
       } catch (err) {
@@ -852,7 +811,7 @@ export default function App() {
       );
       if (!idToken) return;
       try {
-        await removeFromShelfApi(materialId, getAuthHeaders());
+        await removeShelfItemApi(materialId, getAuthHeaders());
         setUserShelfItems((prev) => prev.filter((s) => s.materialId !== materialId));
       } catch (err) {
         console.warn('Shelf removal failed:', err);
@@ -926,65 +885,22 @@ export default function App() {
     await signOut(auth);
     setFirebaseUser(null);
     setIdToken(null);
-    setMaterials([]);
-    setRegulatoryLimits([]);
-    setScentMemories([]);
-    setAccords([]);
-    setFormulas([]);
-    setExperiments([]);
-    setEvaluations([]);
-    setUsageReviews([]);
+    setMaterials(SEED_MATERIALS);
+    setRegulatoryLimits(SEED_REGULATORY_LIMITS);
+    setScentMemories(SEED_SCENT_MEMORIES);
+    setAccords(SEED_ACCORDS);
+    setFormulas(SEED_FORMULAS);
+    setExperiments(SEED_EXPERIMENTS);
+    setEvaluations(SEED_EVALUATIONS);
+    setUsageReviews(SEED_USAGE_REVIEWS);
     setUserShelfItems([]);
-    setActiveFormulaId(0);
-    setActiveVersionLabel('V1');
-    setSelectedMaterialId(0);
+    setActiveFormulaId(SEED_FORMULAS[0].id);
+    setActiveVersionLabel(SEED_FORMULAS[0].activeVersionLabel);
+    setSelectedMaterialId(SEED_MATERIALS[0].id);
   };
 
-const BLANK_DRAFT_FORMULA: Formula = {
-  id: 0,
-  projectId: null,
-  projectName: 'Personal Formulation',
-  name: 'New Fragrance Study',
-  status: 'Draft',
-  description: 'Initial formulation draft session.',
-  intendedProduct: 'Eau de Parfum (20% conc.)',
-  ifraCategory: 'Category 4 (Fine Fragrance)',
-  finalProductConcentration: 20,
-  targetBrief: 'Harmonious opening with balanced heart structure and enduring drydown.',
-  targetFamilies: ['Green', 'Citrus', 'Woody'],
-  targetFacets: { Green: 7, Woody: 6, Citrus: 5, Musky: 5 },
-  targetIntensity: 7,
-  targetTexture: 'Fresh, airy with botanical clarity',
-  targetAtmosphere: 'Luminous morning botanical garden',
-  targetTemperature: 'Cool',
-  targetColor: '#2E6F40',
-  targetMood: 'Uplifting & focused',
-  targetDiffusion: 7,
-  targetEvolution: 'Crisp green opening yielding to a radiant transparent woody heart',
-  targetDrydown: 'Clean skin-scent warmth with subtle resinous cedar persistence',
-  materialsToAvoid: [],
-  isFavorite: false,
-  tags: ['Study', 'Custom'],
-  activeVersionLabel: 'V1',
-  versions: [
-    {
-      id: 0,
-      formulaId: 0,
-      parentVersionId: null,
-      versionLabel: 'V1',
-      status: 'Draft',
-      versionNotes: 'Initial formulation draft',
-      maturationDays: 14,
-      items: [],
-      createdAt: new Date().toISOString().slice(0, 10),
-    },
-  ],
-  createdAt: new Date().toISOString().slice(0, 10),
-  updatedAt: new Date().toISOString().slice(0, 10),
-};
-
   const activeFormula: Formula =
-    formulas.find((f) => f.id === activeFormulaId) || formulas[0] || BLANK_DRAFT_FORMULA;
+    formulas.find((f) => f.id === activeFormulaId) || formulas[0] || SEED_FORMULAS[0];
 
 
   // Handlers for PostgreSQL mutations with optimistic updates

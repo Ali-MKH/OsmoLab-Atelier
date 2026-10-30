@@ -4,8 +4,11 @@ import {
   Formula,
   FormulaLineItem,
   FormulaVersion,
+  MaterialConstituent,
   MaterialRegulatoryLimit,
+  MaterialRegulatoryRecord,
   RawMaterial,
+  RegulatoryVerificationStatus,
   ScentMemoryRecord,
   SensoryEvaluation,
   UserShelfItem,
@@ -24,6 +27,7 @@ export interface CatalogQueryOptions {
 }
 
 export interface CatalogListResponse {
+  items?: RawMaterial[];
   materials: RawMaterial[];
   regulatoryLimits: MaterialRegulatoryLimit[];
   total: number;
@@ -32,12 +36,22 @@ export interface CatalogListResponse {
   hasMore: boolean;
 }
 
+export interface MaterialRegulatoryDossierDto {
+  materialId: number;
+  materialName: string;
+  casNumber: string;
+  verificationStatus: RegulatoryVerificationStatus;
+  regulatoryLimit: MaterialRegulatoryLimit | null;
+  regulatoryRecords: MaterialRegulatoryRecord[];
+  constituents: MaterialConstituent[];
+}
+
 export interface BootstrapResponse {
-  userId: string;
-  persistenceMode: 'postgres' | 'memory';
-  settings: {
+  user: {
+    uid: string;
+    email: string;
+    displayName: string;
     theme: string;
-    activeCurrency: string;
     educationalPrompts: boolean;
     safetyEnabled: boolean;
   };
@@ -52,6 +66,7 @@ export interface BootstrapResponse {
     scentMemories: number;
   };
   activeFormulaId: number | null;
+  activeVersionLabel: string | null;
 }
 
 export async function fetchHealthDataApi(): Promise<{
@@ -118,38 +133,7 @@ export async function fetchCatalogMaterialDetailApi(
 export async function fetchMaterialRegulatoryDossierApi(
   materialId: number,
   headers: Record<string, string> = {}
-): Promise<{
-  materialId: number;
-  materialName: string;
-  casNumber: string;
-  inciName: string;
-  ifra: {
-    status: string;
-    amendmentNumber: number;
-    category4LimitPct: number | null;
-    standardName: string | null;
-    restrictionType: string | null;
-    categoryLimitsTable: unknown[];
-  };
-  euCosmetics: {
-    status: string;
-    annexNumber: string | null;
-    entryNumber: string | null;
-    maxConcentrationPct: number | null;
-    conditionsText: string | null;
-    allergenDeclarable: boolean;
-    leaveOnThresholdPct: number;
-    rinseOffThresholdPct: number;
-  };
-  provenance: {
-    verificationStatus: string;
-    sourceDocument: string;
-    sourceUrl: string;
-    notes: string;
-    lastVerifiedAt: string | null;
-  };
-  regLimit: MaterialRegulatoryLimit | null;
-}> {
+): Promise<MaterialRegulatoryDossierDto> {
   const res = await fetch(`/api/catalog/${materialId}/regulatory`, { headers });
   if (!res.ok) {
     throw new Error(`Failed to fetch regulatory dossier for ${materialId}: ${res.status}`);
