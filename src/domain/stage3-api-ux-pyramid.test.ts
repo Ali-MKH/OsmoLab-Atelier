@@ -397,46 +397,4 @@ describe('Stage 3 — Auth Token Revocation Policy, Validation, Bounded API, Pyr
       'catalog'
     );
   });
-
-  it('enforces Part 1 bounded catalog limits (default 50, max 100), 503 CATALOG_NOT_INITIALIZED formatting, and data readiness reporting', async () => {
-    const defaultQuery = validateCatalogQuery({});
-    assert.equal(defaultQuery.limit, 50);
-    assert.equal(defaultQuery.offset, 0);
-
-    assert.throws(
-      () => validateCatalogQuery({ limit: '101' }),
-      (err: unknown) =>
-        err instanceof ApiValidationError &&
-        err.code === 'INVALID_QUERY_PARAMETERS' &&
-        err.details.some((d) => d.field === 'limit')
-    );
-
-    const { CatalogNotInitializedError } = await import('../db');
-    const formatted503 = formatStandardizedApiError(
-      new CatalogNotInitializedError(),
-      'Fallback message'
-    );
-    assert.equal(formatted503.statusCode, 503);
-    assert.equal(formatted503.body.code, 'CATALOG_NOT_INITIALIZED');
-
-    const { getCatalogReadiness, loadStarterOrganForUser, getUserShelf } = await import(
-      '../db/workspace-repo'
-    );
-    const readiness = await getCatalogReadiness();
-    assert.equal(readiness.persistenceMode, 'memory');
-    assert.equal(readiness.databaseReady, true);
-    assert.equal(readiness.catalogReady, true);
-    assert.ok(readiness.catalogCount >= 815);
-    assert.equal(readiness.catalogVersion, 'v1.1');
-
-    const initialShelf = await getUserShelf('uid-starter-organ-test');
-    assert.ok(initialShelf.length > 0);
-    await removeFromUserShelf('uid-starter-organ-test', initialShelf[0].materialId);
-    const starterResult = await loadStarterOrganForUser('uid-starter-organ-test');
-    assert.equal(starterResult.addedCount, 1);
-    const shelfItems = await getUserShelf('uid-starter-organ-test');
-    assert.equal(shelfItems.length, initialShelf.length);
-  });
 });
-
-

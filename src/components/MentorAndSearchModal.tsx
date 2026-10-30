@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 
 interface MentorViewProps {
-  activeFormula?: Formula | null;
+  activeFormula: Formula;
   materials: RawMaterial[];
   evaluations: SensoryEvaluation[];
   authHeaders: Record<string, string>;
@@ -80,9 +80,9 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
   onCreateExperimentalBranch,
 }) => {
   const currentVersion =
-    activeFormula?.versions?.find(
+    activeFormula.versions.find(
       (v) => v.versionLabel === activeFormula.activeVersionLabel
-    ) || activeFormula?.versions?.[(activeFormula.versions?.length || 1) - 1] || null;
+    ) || activeFormula.versions[activeFormula.versions.length - 1];
 
   const [promptText, setPromptText] = useState(
     'The opening is exactly what I want, but after one hour the composition becomes too dry and woody. I want the drydown softer and more airy without increasing sweetness.'
@@ -92,7 +92,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [facetFilter, setFacetFilter] = useState<'all' | 'under' | 'over' | 'on'>('all');
 
-  const targetFacets = activeFormula?.targetFacets || {
+  const targetFacets = activeFormula.targetFacets || {
     Green: 7,
     Woody: 6,
     Floral: 5,
@@ -285,7 +285,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
     setToastMsg(
       `${action.type === 'reduce' ? 'Reduced' : 'Added'} ${action.material.name} (${
         action.recommendedDeltaPct > 0 ? '+' : ''
-      }${action.recommendedDeltaPct}%) in ${activeFormula?.name || 'Formula'} (${currentVersion?.versionLabel || 'V1'})`
+      }${action.recommendedDeltaPct}%) in ${activeFormula.name} (${currentVersion.versionLabel})`
     );
     setTimeout(() => setToastMsg(null), 4000);
   };
@@ -437,7 +437,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
         trialCode: 'A — Control',
         branchVersionLabel: `${currentVersion?.versionLabel || 'V5'}-Control`,
         batchSizeGrams: 10,
-        objective: `Reference control of current ${activeFormula?.name || 'Formula'} ${currentVersion?.versionLabel || 'V1'}`,
+        objective: `Reference control of current ${activeFormula.name} ${currentVersion?.versionLabel || 'V5'}`,
         modifications: [],
       },
       {
@@ -476,12 +476,12 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
         },
         body: JSON.stringify({
           userPrompt: promptText,
-          formulaName: activeFormula?.name || 'Formula',
-          versionLabel: currentVersion?.versionLabel || 'V1',
-          targetBrief: activeFormula?.targetBrief || '',
+          formulaName: activeFormula.name,
+          versionLabel: currentVersion?.versionLabel,
+          targetBrief: activeFormula.targetBrief,
           items: currentVersion?.items || [],
           evaluationsSummary: evaluations.filter(
-            (ev) => ev.formulaId === activeFormula?.id
+            (ev) => ev.formulaId === activeFormula.id
           ),
           workbenchSummary: materials
             .filter((m) => m.isOnWorkbench !== false)
@@ -585,7 +585,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
             <p className="text-xs text-slate-300 leading-relaxed max-w-4xl">
               Real-time psychophysical gap diagnostics comparing{' '}
               <strong className="text-white">
-                {activeFormula ? `${activeFormula.name} (${currentVersion?.versionLabel || 'V1'})` : 'No Active Formula'}
+                {activeFormula.name} ({currentVersion?.versionLabel})
               </strong>{' '}
               current material weights against the 0–10 intensity facets configured in the{' '}
               <strong className="text-emerald-400">Olfactory Wheel</strong>.
@@ -901,7 +901,7 @@ export const OlfactoryMentorView: React.FC<MentorViewProps> = ({
             Describe Your Sensory Observation or Formulation Goal
           </label>
           <span className="text-slate-400">
-            Target Brief: “{activeFormula?.targetBrief || 'No target brief specified'}”
+            Target Brief: “{activeFormula.targetBrief}”
           </span>
         </div>
 

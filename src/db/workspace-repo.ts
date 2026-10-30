@@ -1,11 +1,5 @@
-import { eq, desc, and, or, isNull, ilike, inArray, count } from 'drizzle-orm';
-import {
-  getPersistenceMode,
-  requirePostgresDb,
-  CatalogNotInitializedError,
-  isCatalogAutoBootstrapEnabled,
-  isPostgresConfigured,
-} from './index.ts';
+import { eq, desc, and, or, isNull } from 'drizzle-orm';
+import { getPersistenceMode, requirePostgresDb } from './index.ts';
 import {
   users,
   materials,
@@ -573,105 +567,6 @@ function safeParseObject<T>(str: string | null | undefined, fallback: T): T {
 
 let pgGlobalCatalogSeeded = false;
 
-export const EXPECTED_CANONICAL_CATALOG_COUNT = 815;
-
-export interface DataHealthResponse {
-  persistenceMode: 'postgres' | 'memory';
-  databaseReady: boolean;
-  catalogReady: boolean;
-  catalogCount: number;
-  catalogVersion: 'v1.1';
-}
-
-export async function getCatalogReadiness(): Promise<DataHealthResponse> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const { materials: mats } = ensureMemoryGlobalCatalogLoaded();
-    return {
-      persistenceMode: 'memory',
-      databaseReady: true,
-      catalogReady: mats.length >= EXPECTED_CANONICAL_CATALOG_COUNT,
-      catalogCount: mats.length,
-      catalogVersion: 'v1.1',
-    };
-  }
-
-  try {
-    const activeDb = requirePostgresDb();
-    const [row] = await activeDb
-      .select({ value: count() })
-      .from(materials)
-      .where(eq(materials.scope, 'GLOBAL'));
-    const catalogCount = Number(row?.value ?? 0);
-    const catalogReady = catalogCount >= EXPECTED_CANONICAL_CATALOG_COUNT;
-    pgGlobalCatalogSeeded = catalogReady;
-    return {
-      persistenceMode: 'postgres',
-      databaseReady: true,
-      catalogReady,
-      catalogCount,
-      catalogVersion: 'v1.1',
-    };
-  } catch {
-    return {
-      persistenceMode: 'postgres',
-      databaseReady: false,
-      catalogReady: false,
-      catalogCount: 0,
-      catalogVersion: 'v1.1',
-    };
-  }
-}
-
-export async function ensureCatalogReadyAtStartup(): Promise<DataHealthResponse> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    return getCatalogReadiness();
-  }
-
-  if (!isPostgresConfigured()) {
-    return {
-      persistenceMode: 'postgres',
-      databaseReady: false,
-      catalogReady: false,
-      catalogCount: 0,
-      catalogVersion: 'v1.1',
-    };
-  }
-
-  const initial = await getCatalogReadiness();
-  if (!initial.databaseReady) {
-    return initial;
-  }
-  if (initial.catalogReady) {
-    return initial;
-  }
-
-  if (isCatalogAutoBootstrapEnabled()) {
-    await importGlobalCatalogV11();
-    return await getCatalogReadiness();
-  }
-
-  return initial;
-}
-
-async function assertPostgresCatalogInitialized(
-  activeDb: any
-): Promise<number> {
-  const [row] = await activeDb
-    .select({ value: count() })
-    .from(materials)
-    .where(eq(materials.scope, 'GLOBAL'));
-  const totalGlobal = Number(row?.value ?? 0);
-  if (totalGlobal < EXPECTED_CANONICAL_CATALOG_COUNT) {
-    throw new CatalogNotInitializedError(
-      `Canonical v1.1 Global Catalog is not initialized in PostgreSQL (found ${totalGlobal} of ${EXPECTED_CANONICAL_CATALOG_COUNT} GLOBAL materials). Run catalog import or enable CATALOG_AUTO_BOOTSTRAP.`
-    );
-  }
-  pgGlobalCatalogSeeded = true;
-  return totalGlobal;
-}
-
 export interface CatalogImportSummary {
   mode: 'postgres' | 'memory';
   totalCatalogMaterials: number;
@@ -711,6 +606,7 @@ export async function importGlobalCatalogV11(): Promise<CatalogImportSummary> {
 }
 
 async function upsertGlobalCatalogInTransaction(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   bundle = loadGlobalCatalogV11()
 ): Promise<CatalogImportSummary> {
@@ -1114,146 +1010,337 @@ async function upsertGlobalCatalogInTransaction(
 // POSTGRES WORKSPACE INITIALIZATION & QUERIES
 // ============================================================================
 
-async function ensurePostgresUserRow(
+async function getOrInitializeWorkspaceInDb(
   uid: string,
-  email = 'perfumer@atelier.local'
-): Promise<WorkspacePayload['user']> {
+  email: string
+): Promise<WorkspacePayload> {
   const activeDb = requirePostgresDb();
-  const existing = await activeDb
-    .select()
-    .from(users)
-    .where(eq(users.uid, uid));
+  const bundle = loadGlobalCatalogV11();
 
-  if (existing.length > 0) {
-    const u = existing[0];
-    return {
-      uid: u.uid,
-      email: u.email,
-      displayName: u.displayName || 'Perfumer',
-      theme: u.theme || 'dark',
-      educationalPrompts: u.educationalPrompts ?? true,
-      safetyEnabled: u.safetyEnabled ?? true,
-    };
+  if (!pgGlobalCatalogSeeded) {
+    await activeDb.transaction(async (tx) => {
+      await upsertGlobalCatalogInTransaction(tx, bundle);
+    });
   }
 
-  const [inserted] = await activeDb
-    .insert(users)
-    .values({
+  await activeDb.transaction(async (tx) => {
+    const existingUsers = await tx.select().from(users).where(eq(users.uid, uid));
+    if (existingUsers.length > 0) {
+      return;
+    }
+
+    await tx.insert(users).values({
       uid,
       email,
       displayName: email.split('@')[0] || 'Perfumer',
       theme: 'dark',
       educationalPrompts: true,
       safetyEnabled: true,
-    })
-    .onConflictDoNothing()
-    .returning();
+    });
 
-  if (inserted) {
-    return {
-      uid: inserted.uid,
-      email: inserted.email,
-      displayName: inserted.displayName || 'Perfumer',
-      theme: inserted.theme || 'dark',
-      educationalPrompts: inserted.educationalPrompts ?? true,
-      safetyEnabled: inserted.safetyEnabled ?? true,
-    };
-  }
-
-  const [reloaded] = await activeDb
-    .select()
-    .from(users)
-    .where(eq(users.uid, uid));
-  return {
-    uid: reloaded?.uid || uid,
-    email: reloaded?.email || email,
-    displayName: reloaded?.displayName || 'Perfumer',
-    theme: reloaded?.theme || 'dark',
-    educationalPrompts: reloaded?.educationalPrompts ?? true,
-    safetyEnabled: reloaded?.safetyEnabled ?? true,
-  };
-}
-
-/**
- * Explicit opt-in action ("Load Starter Organ") using canonical starter-set data
- * through the server/domain layer without silently seeding on user creation.
- */
-export async function loadStarterOrganForUser(
-  uid: string
-): Promise<{ addedCount: number; shelf: UserShelfItem[] }> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    let addedCount = 0;
-    for (const seedId of DEFAULT_STARTER_SHELF_IDS) {
-      if (!store.shelfByMaterialId.has(seedId)) {
-        await addToUserShelf(uid, seedId, { isOnWorkbench: true });
-        addedCount++;
+    const globalRows = await tx
+      .select()
+      .from(materials)
+      .where(eq(materials.scope, 'GLOBAL'));
+    const seedIdToDbMatId = new Map<number, number>();
+    for (const [seedIdStr, catKey] of Object.entries(SEED_ID_TO_CATALOG_KEY)) {
+      const found = globalRows.find((r) => r.catalogKey === catKey);
+      if (found) {
+        seedIdToDbMatId.set(Number(seedIdStr), found.id);
       }
     }
-    return {
-      addedCount,
-      shelf: Array.from(store.shelfByMaterialId.values()),
-    };
-  }
 
-  const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
-
-  const starterKeys = DEFAULT_STARTER_SHELF_IDS.map(
-    (seedId) => SEED_ID_TO_CATALOG_KEY[seedId]
-  ).filter(Boolean);
-
-  const globalStarterRows = await activeDb
-    .select()
-    .from(materials)
-    .where(
-      and(
-        eq(materials.scope, 'GLOBAL'),
-        inArray(materials.catalogKey, starterKeys)
-      )
-    );
-
-  let addedCount = 0;
-  for (const matRow of globalStarterRows) {
-    const existing = await activeDb
-      .select()
-      .from(userShelf)
-      .where(
-        and(eq(userShelf.userUid, uid), eq(userShelf.materialId, matRow.id))
-      );
-    if (existing.length === 0) {
-      await activeDb.insert(userShelf).values({
+    for (const seedId of DEFAULT_STARTER_SHELF_IDS) {
+      const dbMatId = seedIdToDbMatId.get(seedId);
+      const seedMat = bundle.materials.find((m) => m.id === seedId);
+      if (!dbMatId || !seedMat) continue;
+      await tx.insert(userShelf).values({
         userUid: uid,
-        materialId: matRow.id,
-        supplierName: matRow.supplier || '',
-        supplierProductName: matRow.supplierProductCode || '',
-        workingDilutionPct: matRow.recommendedDilution ?? 100,
-        personalNotes: '',
+        materialId: dbMatId,
+        supplierName: seedMat.supplier || '',
+        supplierProductName: seedMat.supplierProductCode || '',
+        workingDilutionPct: seedMat.recommendedDilution ?? 100,
+        personalNotes: seedMat.personalNotes || '',
         isOnWorkbench: true,
         pyramidOverrideCode: null,
         favorite: false,
       });
-      addedCount++;
-    } else if (!existing[0].isOnWorkbench) {
-      await activeDb
-        .update(userShelf)
-        .set({ isOnWorkbench: true, updatedAt: new Date() })
-        .where(eq(userShelf.id, existing[0].id));
     }
-  }
 
-  const shelf = await getUserShelf(uid);
-  return { addedCount, shelf };
-}
+    for (const mem of SEED_SCENT_MEMORIES) {
+      const dbMatId = seedIdToDbMatId.get(mem.materialId);
+      if (!dbMatId) continue;
+      await tx.insert(scentMemories).values({
+        userUid: uid,
+        materialId: dbMatId,
+        myPerception: JSON.stringify(mem.myPerception),
+        associatedMemories: JSON.stringify(mem.associatedMemories),
+        emotions: JSON.stringify(mem.emotions),
+        mentalImages: mem.mentalImages,
+        places: mem.places,
+        colors: mem.colors,
+        textures: mem.textures,
+        temperature: mem.temperature,
+        strengthScore: mem.strengthScore,
+        familiarityScore: mem.familiarityScore,
+        blindConfidenceScore: mem.blindConfidenceScore,
+        recognitionTrials: mem.recognitionTrials,
+        recognitionCorrect: mem.recognitionCorrect,
+      });
+    }
 
-async function getOrInitializeWorkspaceInDb(
-  uid: string,
-  email: string
-): Promise<WorkspacePayload> {
-  const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
-  await ensurePostgresUserRow(uid, email);
+    // Seed Accords + normalized accord_versions + accord_version_items
+    const accordIdMap = new Map<number, number>();
+    const accordActiveVersionIdMap = new Map<number, number>();
+    for (const acc of SEED_ACCORDS) {
+      const remappedItems = acc.items.map((item) => ({
+        ...item,
+        materialId: seedIdToDbMatId.get(item.materialId) || item.materialId,
+      }));
+      const activeVerLabel = acc.activeVersionLabel || 'V1';
+      const [insertedAcc] = await tx
+        .insert(accords)
+        .values({
+          userUid: uid,
+          name: acc.name,
+          category: acc.category,
+          description: acc.description,
+          objective: acc.objective,
+          usageSuggestions: acc.usageSuggestions,
+          notes: acc.notes,
+          isEducational: acc.isEducational,
+          activeVersionLabel: activeVerLabel,
+          itemsJson: JSON.stringify(remappedItems),
+          olfactoryProfileJson: JSON.stringify(acc.olfactoryProfile),
+        })
+        .returning();
+      accordIdMap.set(acc.id, insertedAcc.id);
+
+      const versionsToSeed =
+        acc.versions && acc.versions.length > 0
+          ? acc.versions
+          : [
+              {
+                versionId: `acc-${acc.id}-v1`,
+                versionLabel: activeVerLabel,
+                createdAt: '2026-10-01 10:00',
+                versionNotes: acc.notes || 'Initial accord version',
+                items: acc.items,
+              },
+            ];
+
+      let activeVerDbId: number | null = null;
+      for (const ver of versionsToSeed) {
+        const [insertedAccVer] = await tx
+          .insert(accordVersions)
+          .values({
+            userUid: uid,
+            accordId: insertedAcc.id,
+            versionLabel: ver.versionLabel,
+            status: 'Committed',
+            versionNotes: ver.versionNotes || '',
+          })
+          .returning();
+
+        if (ver.versionLabel === activeVerLabel || activeVerDbId === null) {
+          activeVerDbId = insertedAccVer.id;
+        }
+
+        for (let idx = 0; idx < ver.items.length; idx++) {
+          const it = ver.items[idx];
+          const dbMatId = seedIdToDbMatId.get(it.materialId) || it.materialId;
+          await tx.insert(accordVersionItems).values({
+            accordVersionId: insertedAccVer.id,
+            lineOrder: idx,
+            materialId: dbMatId,
+            materialName: it.materialName,
+            percentage: it.percentage,
+            dilutionPct: it.dilutionPercent ?? 100,
+            notes: it.notes || '',
+          });
+        }
+      }
+
+      if (activeVerDbId !== null) {
+        accordActiveVersionIdMap.set(acc.id, activeVerDbId);
+      }
+    }
+
+    const [insertedProject] = await tx
+      .insert(projects)
+      .values({
+        userUid: uid,
+        name: 'Forest Project',
+        description: 'Exploring wet moss, crisp galbanum stems, and airy woody drydowns.',
+        status: 'Active',
+      })
+      .returning();
+
+    // Seed Formulas + formula_versions + normalized formula_version_items
+    const formulaIdMap = new Map<number, number>();
+    const formulaVersionDbIdMap = new Map<string, number>();
+
+    for (const f of SEED_FORMULAS) {
+      const [insertedFormula] = await tx
+        .insert(formulas)
+        .values({
+          userUid: uid,
+          projectId: insertedProject.id,
+          projectName: f.projectName,
+          name: f.name,
+          status: f.status,
+          description: f.description,
+          intendedProduct: f.intendedProduct,
+          ifraCategory: f.ifraCategory,
+          finalProductConcentration: f.finalProductConcentration,
+          targetBrief: f.targetBrief,
+          targetFamilies: JSON.stringify(f.targetFamilies),
+          targetFacetsJson: JSON.stringify(f.targetFacets),
+          targetIntensity: f.targetIntensity,
+          targetTexture: f.targetTexture,
+          targetAtmosphere: f.targetAtmosphere,
+          targetTemperature: f.targetTemperature,
+          targetColor: f.targetColor,
+          targetMood: f.targetMood,
+          targetDiffusion: f.targetDiffusion,
+          targetEvolution: f.targetEvolution,
+          targetDrydown: f.targetDrydown,
+          materialsToAvoid: JSON.stringify(f.materialsToAvoid),
+          isFavorite: f.isFavorite,
+          tags: JSON.stringify(f.tags),
+          activeVersionLabel: f.activeVersionLabel,
+        })
+        .returning();
+
+      formulaIdMap.set(f.id, insertedFormula.id);
+
+      let prevVersionDbId: number | null = null;
+      for (const ver of f.versions) {
+        const remappedItems: FormulaLineItem[] = ver.items.map((item) => {
+          const isAccord = item.type === 'accord' || item.itemType === 'ACCORD';
+          return {
+            ...item,
+            materialId:
+              !isAccord && item.materialId
+                ? seedIdToDbMatId.get(item.materialId) || item.materialId
+                : undefined,
+            accordId:
+              isAccord && item.accordId
+                ? accordIdMap.get(item.accordId) || item.accordId
+                : undefined,
+            accordVersionId:
+              isAccord && item.accordId
+                ? accordActiveVersionIdMap.get(item.accordId) ?? null
+                : null,
+          };
+        });
+
+        const [insertedVer]: Array<{ id: number }> = await tx
+          .insert(formulaVersions)
+          .values({
+            userUid: uid,
+            formulaId: insertedFormula.id,
+            parentVersionId: prevVersionDbId,
+            versionLabel: ver.versionLabel,
+            status: ver.status,
+            versionNotes: ver.versionNotes,
+            maturationDays: ver.maturationDays,
+            itemsJson: JSON.stringify(remappedItems),
+          })
+          .returning();
+
+        prevVersionDbId = insertedVer.id;
+        formulaVersionDbIdMap.set(
+          `${insertedFormula.id}:${ver.versionLabel}`,
+          insertedVer.id
+        );
+
+        for (let idx = 0; idx < remappedItems.length; idx++) {
+          const item = remappedItems[idx];
+          const isAccord = item.type === 'accord' || item.itemType === 'ACCORD';
+          await tx.insert(formulaVersionItems).values({
+            formulaVersionId: insertedVer.id,
+            lineOrder: idx,
+            itemType: isAccord ? 'ACCORD' : 'MATERIAL',
+            materialId: isAccord ? null : (item.materialId ?? null),
+            accordId: isAccord ? (item.accordId ?? null) : null,
+            accordVersionId: isAccord ? (item.accordVersionId ?? null) : null,
+            name: item.name,
+            percentage: item.percentage,
+            quantityGrams: item.quantityGrams,
+            dilutionPct: item.dilutionPercent ?? 100,
+            solvent: item.solvent || 'Neat',
+            activeMaterialPct: item.activeMaterialPercent ?? item.percentage,
+            supplier: item.supplier || '',
+            costPerGram: item.costPerGram ?? 0.35,
+            notes: item.notes || '',
+          });
+        }
+      }
+    }
+
+    // Seed Experiments with formulaVersionId
+    for (const exp of SEED_EXPERIMENTS) {
+      const targetFormulaId = formulaIdMap.get(exp.formulaId) || formulaIdMap.get(1);
+      if (!targetFormulaId) continue;
+      const verDbId =
+        formulaVersionDbIdMap.get(`${targetFormulaId}:${exp.formulaVersionLabel}`) ??
+        null;
+      await tx.insert(experiments).values({
+        userUid: uid,
+        formulaId: targetFormulaId,
+        formulaVersionId: verDbId,
+        formulaVersionLabel: exp.formulaVersionLabel,
+        stageLabel: exp.stageLabel,
+        observation: exp.observation,
+        recordedAt: exp.recordedAt,
+      });
+    }
+
+    // Seed Evaluations with formulaVersionId
+    for (const ev of SEED_EVALUATIONS) {
+      const targetFormulaId = formulaIdMap.get(ev.formulaId) || formulaIdMap.get(1);
+      if (!targetFormulaId) continue;
+      const verDbId =
+        formulaVersionDbIdMap.get(`${targetFormulaId}:${ev.formulaVersionLabel}`) ??
+        null;
+      await tx.insert(evaluations).values({
+        userUid: uid,
+        formulaId: targetFormulaId,
+        formulaVersionId: verDbId,
+        formulaVersionLabel: ev.formulaVersionLabel,
+        checkpoint: ev.checkpoint,
+        overallScore: ev.overallScore,
+        scoresJson: JSON.stringify(ev.scores),
+        evaluatedFacetsJson: JSON.stringify(ev.evaluatedFacets),
+        openingNotes: ev.openingNotes,
+        heartNotes: ev.heartNotes,
+        drydownNotes: ev.drydownNotes,
+        voiceTranscript: ev.voiceTranscript,
+        voiceDurationSeconds: ev.voiceDurationSeconds,
+      });
+    }
+
+    // Seed Material Usage Reviews with formulaVersionId
+    for (const rev of SEED_USAGE_REVIEWS) {
+      const targetFormulaId = formulaIdMap.get(rev.formulaId) || formulaIdMap.get(1);
+      const dbMatId = seedIdToDbMatId.get(rev.materialId);
+      if (!targetFormulaId || !dbMatId) continue;
+      const verDbId =
+        formulaVersionDbIdMap.get(`${targetFormulaId}:${rev.versionLabel}`) ?? null;
+      await tx.insert(materialUsageReviews).values({
+        userUid: uid,
+        materialId: dbMatId,
+        formulaId: targetFormulaId,
+        formulaVersionId: verDbId,
+        formulaName: rev.formulaName,
+        versionLabel: rev.versionLabel,
+        percentageUsed: rev.percentageUsed,
+        effectivenessScore: rev.effectivenessScore,
+        observation: rev.observation,
+      });
+    }
+  });
 
   // Query full workspace state for `uid`
   const [userRecord] = await activeDb.select().from(users).where(eq(users.uid, uid));
@@ -1808,7 +1895,12 @@ export async function getGlobalCatalogSnapshot(): Promise<{
   }
 
   const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
+  const bundle = loadGlobalCatalogV11();
+  if (!pgGlobalCatalogSeeded) {
+    await activeDb.transaction(async (tx) => {
+      await upsertGlobalCatalogInTransaction(tx, bundle);
+    });
+  }
 
   const rawMats = await activeDb
     .select()
@@ -1816,169 +1908,12 @@ export async function getGlobalCatalogSnapshot(): Promise<{
     .where(eq(materials.scope, 'GLOBAL'))
     .orderBy(materials.id);
 
-  const rawProfiles = await activeDb.select().from(materialOlfactoryProfiles);
-  const profileByMatId = new Map<number, typeof materialOlfactoryProfiles.$inferSelect>();
-  for (const p of rawProfiles) {
-    profileByMatId.set(p.materialId, p);
-  }
-
-  const rawLimits = await activeDb
-    .select()
-    .from(materialRegulatoryLimits)
-    .where(isNull(materialRegulatoryLimits.userUid));
-  const rawRecords = await activeDb
-    .select()
-    .from(materialRegulatoryRecords)
-    .where(isNull(materialRegulatoryRecords.userUid));
-  const rawConsts = await activeDb.select().from(materialConstituents);
-
-  const mappedMaterials: RawMaterial[] = rawMats.map((m) => {
-    const prof = profileByMatId.get(m.id);
-    return {
-      id: m.id,
-      catalogKey: m.catalogKey || undefined,
-      scope: 'GLOBAL',
-      ownerUid: null,
-      displayName: m.displayName || m.name,
-      name: m.name,
-      aliases: m.aliases || '',
-      casNumber: m.casNumber || 'Unknown / Not Provided',
-      inciName: m.inciName || 'Unknown / Not Provided',
-      naturalOrSynthetic:
-        (m.naturalOrSynthetic as 'Natural' | 'Synthetic' | 'Base') || 'Synthetic',
-      materialKind: m.materialKind || 'SYNTHETIC',
-      supplier: m.supplier || '',
-      supplierProductCode: m.supplierProductCode || '',
-      supplierProductName: '',
-      manufacturer: m.manufacturer || '',
-      primaryFamily: prof?.primaryFamily || m.primaryFamily,
-      facets: safeParseArray(prof?.facets || m.facets),
-      odorSummary: prof?.odorSummary || m.descriptiveNotes || '',
-      roleTopHeartBase: prof?.roleTopHeartBase || m.volatility,
-      pyramidUsage: prof?.pyramidUsage || 'UNSPECIFIED',
-      pyramidPrimaryZone:
-        (prof?.pyramidPrimaryZone as PyramidPrimaryZone) || 'UNSPECIFIED',
-      pyramidHighlightTop: Boolean(prof?.pyramidHighlightTop),
-      pyramidHighlightHeart: Boolean(prof?.pyramidHighlightHeart),
-      pyramidHighlightBase: Boolean(prof?.pyramidHighlightBase),
-      pyramidUiCode: (prof?.pyramidUiCode as PyramidUiCode) || 'NA',
-      pyramidConfidence: (prof?.pyramidConfidence as PyramidConfidence) || 'UNKNOWN',
-      pyramidBasis: prof?.pyramidBasis || 'UNSPECIFIED',
-      pyramidNote: prof?.pyramidNote || '',
-      olfactoryStrength: prof?.olfactoryStrength || 'MEDIUM',
-      intensity: prof?.intensity ?? m.intensity ?? 7,
-      substantivityHours: prof?.substantivityHours ?? m.substantivityHours ?? 24,
-      diffusion: prof?.diffusion ?? m.diffusion ?? 7,
-      volatility: (prof?.volatility || m.volatility) as VolatilityTier,
-      descriptiveNotes: prof?.descriptiveNotes || m.descriptiveNotes || '',
-      texture: prof?.texture || m.texture || '',
-      temperatureImpression:
-        prof?.temperatureImpression || m.temperatureImpression || 'Neutral',
-      personalNotes: '',
-      purity: m.purity || 'Unknown / Not Provided',
-      density: m.density ?? 1.0,
-      recommendedDilution: m.recommendedDilution ?? 100,
-      workingDilutionPct: null,
-      storageInfo: m.storageInfo || '',
-      shelfLifeMonths: m.shelfLifeMonths ?? 24,
-      flashPointCelsius: m.flashPointCelsius ?? null,
-      educationalObserve: safeParseArray(
-        prof?.educationalObserve || m.educationalObserve
-      ),
-      complements: safeParseArray(prof?.complements || m.complements),
-      contrasts: safeParseArray(prof?.contrasts || m.contrasts),
-      isSeedData: m.isSeedData ?? false,
-      isOnShelf: false,
-      isOnWorkbench: false,
-      costPerGram: m.costPerGram ?? 0.35,
-      sourceSection: m.sourceSection || '',
-      catalogSource: m.catalogSource || '',
-      catalogSourceUrl: m.catalogSourceUrl || '',
-      sourceLicense: m.sourceLicense || '',
-      sourceLicenseUrl: m.sourceLicenseUrl || '',
-      starterPriority: m.starterPriority || 'OPTIONAL',
-    };
-  });
-
-  const mappedRecords: MaterialRegulatoryRecord[] = rawRecords.map((rec) => ({
-    id: rec.id,
-    materialId: rec.materialId,
-    userUid: rec.userUid,
-    jurisdiction: rec.jurisdiction,
-    authority: rec.authority as RegulatoryAuthority,
-    ruleType: rec.ruleType as RegulatoryRuleType,
-    status: rec.status,
-    standardOrAnnex: rec.standardOrAnnex,
-    referenceNumber: rec.referenceNumber,
-    productCategory: rec.productCategory ?? null,
-    maxFinishedProductPct: rec.maxFinishedProductPct ?? null,
-    maxReadyForUsePct: rec.maxReadyForUsePct ?? null,
-    labelThresholdLeaveOnPct: rec.labelThresholdLeaveOnPct ?? null,
-    labelThresholdRinseOffPct: rec.labelThresholdRinseOffPct ?? null,
-    conditionText: rec.conditionText || '',
-    summary: rec.summary || '',
-    sourceUrl: rec.sourceUrl || '',
-    sourceDocument: rec.sourceDocument || '',
-    sourceVersion: rec.sourceVersion || '',
-    verifiedAt: rec.verifiedAt ?? null,
-    verificationStatus: rec.verificationStatus as RegulatoryVerificationStatus,
-  }));
-
-  const mappedConstituents: MaterialConstituent[] = rawConsts.map((c) => ({
-    id: c.id,
-    materialId: c.materialId,
-    constituentName: c.constituentName,
-    constituentCas: c.constituentCas || '',
-    typicalPct: c.typicalPct ?? null,
-    minPct: c.minPct ?? null,
-    maxPct: c.maxPct ?? null,
-    labelThresholdLeaveOnPct: c.labelThresholdLeaveOnPct ?? 0.001,
-    labelThresholdRinseOffPct: c.labelThresholdRinseOffPct ?? 0.01,
-    riskNote: c.riskNote || '',
-    sourceUrl: c.sourceUrl || '',
-    sourceDocument: c.sourceDocument || '',
-    verificationStatus: c.verificationStatus as RegulatoryVerificationStatus,
-  }));
-
-  const mappedLimits: MaterialRegulatoryLimit[] = rawLimits.map((r) => {
-    const verStatus: RegulatoryVerificationStatus =
-      r.regulatoryDataStatus === 'PARTIALLY_VERIFIED_OFFICIAL_SOURCES'
-        ? 'PARTIALLY_VERIFIED'
-        : r.isDemoData
-        ? 'DEMO'
-        : 'LOOKUP_REQUIRED';
-    return {
-      id: r.id,
-      materialId: r.materialId,
-      ifraCategory: r.ifraCategory,
-      maxAllowedPercent: r.maxAllowedPercent ?? null,
-      allergens: r.allergens || 'Unknown / Not Provided',
-      restrictions: r.restrictions || '',
-      sourceDocument: r.sourceDocument || 'Unknown / Not Provided',
-      documentVersion: r.documentVersion || 'Unknown / Not Provided',
-      effectiveDate: r.effectiveDate || 'Unknown / Not Provided',
-      isDemoData: r.isDemoData ?? true,
-      verificationStatus: verStatus,
-      ifraStandardStatus: r.ifraStandardStatus || undefined,
-      ifraStandardType: r.ifraStandardType || undefined,
-      euCosmeticsStatus: r.euCosmeticsStatus || undefined,
-      euAnnex: r.euAnnex || undefined,
-      euReferenceNo: r.euReferenceNo || undefined,
-      euLabelThresholdLeaveOnPct: r.euLabelThresholdLeaveOnPct ?? null,
-      euLabelThresholdRinseOffPct: r.euLabelThresholdRinseOffPct ?? null,
-      regulatorySources: r.regulatorySources || undefined,
-      lastVerifiedDate: r.lastVerifiedDate || undefined,
-      euCosmeticLimitPercent: r.euMaxReadyForUsePct ?? null,
-      euAllergenDeclarable: r.euLabelThresholdLeaveOnPct !== null,
-    };
-  });
-
   return {
-    totalCatalogMaterials: mappedMaterials.length,
-    materials: mappedMaterials,
-    regulatoryLimits: mappedLimits,
-    regulatoryRecords: mappedRecords,
-    constituents: mappedConstituents,
+    totalCatalogMaterials: rawMats.length || bundle.materials.length,
+    materials: bundle.materials,
+    regulatoryLimits: bundle.regulatoryLimits,
+    regulatoryRecords: bundle.regulatoryRecords,
+    constituents: bundle.constituents,
   };
 }
 
@@ -3213,28 +3148,9 @@ export async function createAccord(
     }
 
     return {
-      ...payload,
-      id: inserted.id,
+      ...inserted,
       activeVersionId: insertedVer.id,
       activeVersionLabel: verLabel,
-      versions: [
-        {
-          id: insertedVer.id,
-          accordId: inserted.id,
-          versionId: `acc-${inserted.id}-v${insertedVer.id}`,
-          versionLabel: verLabel,
-          status: 'Committed' as const,
-          createdAt: insertedVer.createdAt
-            ? insertedVer.createdAt.toISOString().slice(0, 16).replace('T', ' ')
-            : new Date().toISOString().slice(0, 16).replace('T', ' '),
-          versionNotes: payload.notes || 'Initial accord version',
-          items: payload.items.map((it, idx) => ({
-            ...it,
-            id: idx + 1,
-            lineOrder: idx,
-          })),
-        },
-      ],
     };
   });
 }
@@ -3304,7 +3220,7 @@ export async function updateAccordAndCreateVersion(
   }
 
   const activeDb = requirePostgresDb();
-  const updatedId = await activeDb.transaction(async (tx) => {
+  return await activeDb.transaction(async (tx) => {
     const existingAccRows = await tx
       .select()
       .from(accords)
@@ -3363,15 +3279,9 @@ export async function updateAccordAndCreateVersion(
       })
       .where(eq(accords.id, accordId));
 
-    return accordId;
+    const snap = await getOrInitializeWorkspaceInDb(uid, `${uid}@perfumery.studio`);
+    return snap.accords.find((a) => a.id === accordId)!;
   });
-
-  const userAccords = await getUserAccords(uid);
-  const found = userAccords.find((a) => a.id === updatedId);
-  if (!found) {
-    throw new FormulaIntegrityError(`Accord ${accordId} not found.`, 404);
-  }
-  return found;
 }
 
 export async function addExperiment(
@@ -3558,30 +3468,13 @@ export async function addEvaluation(
       voiceDurationSeconds: payload.voiceDurationSeconds ?? 0,
     })
     .returning();
-  return {
-    id: inserted.id,
-    formulaId: inserted.formulaId,
-    formulaVersionId: inserted.formulaVersionId ?? null,
-    formulaVersionLabel: inserted.formulaVersionLabel,
-    checkpoint: inserted.checkpoint,
-    overallScore: inserted.overallScore ?? 8,
-    scores: safeParseObject(inserted.scoresJson, payload.scores || { opening: 8, heart: 8, drydown: 8, diffusion: 8, longevity: 8 }),
-    evaluatedFacets: safeParseObject(inserted.evaluatedFacetsJson, payload.evaluatedFacets || {}),
-    openingNotes: inserted.openingNotes || '',
-    heartNotes: inserted.heartNotes || '',
-    drydownNotes: inserted.drydownNotes || '',
-    voiceTranscript: inserted.voiceTranscript || '',
-    voiceDurationSeconds: inserted.voiceDurationSeconds ?? 0,
-    createdAt: inserted.createdAt
-      ? inserted.createdAt.toISOString().slice(0, 16).replace('T', ' ')
-      : new Date().toISOString().slice(0, 16).replace('T', ' '),
-  };
+  return inserted;
 }
 
 export async function upsertScentMemory(
   uid: string,
   payload: Omit<ScentMemoryRecord, 'id' | 'lastReviewedAt'>
-): Promise<ScentMemoryRecord> {
+) {
   const mode = getPersistenceMode();
   if (mode === 'memory') {
     const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
@@ -3591,12 +3484,11 @@ export async function upsertScentMemory(
     );
     if (existing) {
       Object.assign(existing, payload, { lastReviewedAt: today });
-      return { ...existing };
+      return { id: existing.id };
     }
     const nextId = Math.max(0, ...store.scentMemories.map((m) => m.id)) + 1;
-    const created: ScentMemoryRecord = { ...payload, id: nextId, lastReviewedAt: today };
-    store.scentMemories.push(created);
-    return { ...created };
+    store.scentMemories.push({ ...payload, id: nextId, lastReviewedAt: today });
+    return { id: nextId };
   }
 
   const activeDb = requirePostgresDb();
@@ -3610,7 +3502,6 @@ export async function upsertScentMemory(
       )
     );
 
-  const todayStr = new Date().toISOString().slice(0, 10);
   if (existing.length > 0) {
     await activeDb
       .update(scentMemories)
@@ -3631,11 +3522,7 @@ export async function upsertScentMemory(
         lastReviewedAt: new Date(),
       })
       .where(eq(scentMemories.id, existing[0].id));
-    return {
-      ...payload,
-      id: existing[0].id,
-      lastReviewedAt: todayStr,
-    };
+    return { id: existing[0].id };
   }
 
   const [inserted] = await activeDb
@@ -3658,11 +3545,7 @@ export async function upsertScentMemory(
       recognitionCorrect: payload.recognitionCorrect,
     })
     .returning();
-  return {
-    ...payload,
-    id: inserted.id,
-    lastReviewedAt: todayStr,
-  };
+  return { id: inserted.id };
 }
 
 export async function updateUserSettingsInDb(
@@ -3754,7 +3637,7 @@ export const createAccordInDb = createAccord;
 export const deleteAccountDataInDb = deleteAccountData;
 
 // ============================================================================
-// STAGE 3 BOUNDED REPOSITORY QUERIES & FOCUSED DOMAIN READERS
+// STAGE 3 BOUNDED REPOSITORY QUERIES
 // ============================================================================
 
 export interface BootstrapResponse {
@@ -3777,235 +3660,24 @@ export async function fetchBootstrapInfo(
   uid: string,
   email: string
 ): Promise<BootstrapResponse> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const { materials: globalMats } = ensureMemoryGlobalCatalogLoaded();
-    const store = getOrCreateMemoryUserStore(uid, email);
-    const customCount = memoryCustomUserMaterials.filter(
-      (m) => m.scope === 'USER' && m.ownerUid === uid
-    ).length;
-    const shelfArr = Array.from(store.shelfByMaterialId.values());
-    const firstFormula = store.formulas[0] || null;
-    return {
-      user: { ...store.user },
-      counts: {
-        catalog: globalMats.length + customCount,
-        shelf: shelfArr.length,
-        workbench: shelfArr.filter((s) => s.isOnWorkbench).length,
-        formulas: store.formulas.length,
-        accords: store.accords.length,
-        evaluations: store.evaluations.length,
-        experiments: store.experiments.length,
-        scentMemories: store.scentMemories.length,
-      },
-      activeFormulaId: firstFormula ? firstFormula.id : null,
-      activeVersionLabel: firstFormula ? firstFormula.activeVersionLabel : null,
-    };
-  }
-
-  const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
-  const userObj = await ensurePostgresUserRow(uid, email);
-
-  const [
-    [catalogRow],
-    [shelfRow],
-    [workbenchRow],
-    [formulasRow],
-    [accordsRow],
-    [evaluationsRow],
-    [experimentsRow],
-    [memoriesRow],
-    firstFormulaRows,
-  ] = await Promise.all([
-    activeDb
-      .select({ value: count() })
-      .from(materials)
-      .where(
-        or(
-          eq(materials.scope, 'GLOBAL'),
-          and(eq(materials.scope, 'USER'), eq(materials.ownerUid, uid))
-        )
-      ),
-    activeDb
-      .select({ value: count() })
-      .from(userShelf)
-      .where(eq(userShelf.userUid, uid)),
-    activeDb
-      .select({ value: count() })
-      .from(userShelf)
-      .where(
-        and(eq(userShelf.userUid, uid), eq(userShelf.isOnWorkbench, true))
-      ),
-    activeDb
-      .select({ value: count() })
-      .from(formulas)
-      .where(eq(formulas.userUid, uid)),
-    activeDb
-      .select({ value: count() })
-      .from(accords)
-      .where(eq(accords.userUid, uid)),
-    activeDb
-      .select({ value: count() })
-      .from(evaluations)
-      .where(eq(evaluations.userUid, uid)),
-    activeDb
-      .select({ value: count() })
-      .from(experiments)
-      .where(eq(experiments.userUid, uid)),
-    activeDb
-      .select({ value: count() })
-      .from(scentMemories)
-      .where(eq(scentMemories.userUid, uid)),
-    activeDb
-      .select({
-        id: formulas.id,
-        activeVersionLabel: formulas.activeVersionLabel,
-      })
-      .from(formulas)
-      .where(eq(formulas.userUid, uid))
-      .orderBy(formulas.id)
-      .limit(1),
-  ]);
-
-  const firstFormula = firstFormulaRows[0] || null;
+  const ws = await fetchFullWorkspace(uid, email);
+  const shelfCount = ws.userShelf.length;
+  const workbenchCount = ws.userShelf.filter((s) => s.isOnWorkbench).length;
+  const firstFormula = ws.formulas[0] || null;
   return {
-    user: userObj,
+    user: ws.user,
     counts: {
-      catalog: Number(catalogRow?.value ?? 0),
-      shelf: Number(shelfRow?.value ?? 0),
-      workbench: Number(workbenchRow?.value ?? 0),
-      formulas: Number(formulasRow?.value ?? 0),
-      accords: Number(accordsRow?.value ?? 0),
-      evaluations: Number(evaluationsRow?.value ?? 0),
-      experiments: Number(experimentsRow?.value ?? 0),
-      scentMemories: Number(memoriesRow?.value ?? 0),
+      catalog: ws.materials.length,
+      shelf: shelfCount,
+      workbench: workbenchCount,
+      formulas: ws.formulas.length,
+      accords: ws.accords.length,
+      evaluations: ws.evaluations.length,
+      experiments: ws.experiments.length,
+      scentMemories: ws.scentMemories.length,
     },
     activeFormulaId: firstFormula ? firstFormula.id : null,
-    activeVersionLabel: firstFormula
-      ? firstFormula.activeVersionLabel || 'V1'
-      : null,
-  };
-}
-
-function mapPgMaterialRowToRawMaterial(
-  m: typeof materials.$inferSelect,
-  prof?: typeof materialOlfactoryProfiles.$inferSelect | null,
-  shelfItem?: UserShelfItem | null
-): RawMaterial {
-  const isOnShelf = Boolean(shelfItem);
-  const isOnWorkbench = Boolean(shelfItem && shelfItem.isOnWorkbench);
-  return {
-    id: m.id,
-    catalogKey: m.catalogKey || undefined,
-    scope: (m.scope as 'GLOBAL' | 'USER') || 'GLOBAL',
-    ownerUid: m.ownerUid ?? null,
-    displayName: m.displayName || m.name,
-    name: m.name,
-    aliases: m.aliases || '',
-    casNumber: m.casNumber || 'Unknown / Not Provided',
-    inciName: m.inciName || 'Unknown / Not Provided',
-    naturalOrSynthetic:
-      (m.naturalOrSynthetic as 'Natural' | 'Synthetic' | 'Base') || 'Synthetic',
-    materialKind: m.materialKind || 'SYNTHETIC',
-    supplier: shelfItem?.supplierName || m.supplier || '',
-    supplierProductCode: m.supplierProductCode || '',
-    supplierProductName: shelfItem?.supplierProductName || '',
-    manufacturer: m.manufacturer || '',
-    primaryFamily: prof?.primaryFamily || m.primaryFamily,
-    facets: safeParseArray(prof?.facets || m.facets),
-    odorSummary: prof?.odorSummary || m.descriptiveNotes || '',
-    roleTopHeartBase: prof?.roleTopHeartBase || m.volatility,
-    pyramidUsage: prof?.pyramidUsage || 'UNSPECIFIED',
-    pyramidPrimaryZone:
-      (prof?.pyramidPrimaryZone as PyramidPrimaryZone) || 'UNSPECIFIED',
-    pyramidHighlightTop: Boolean(prof?.pyramidHighlightTop),
-    pyramidHighlightHeart: Boolean(prof?.pyramidHighlightHeart),
-    pyramidHighlightBase: Boolean(prof?.pyramidHighlightBase),
-    pyramidUiCode: (prof?.pyramidUiCode as PyramidUiCode) || 'NA',
-    pyramidConfidence:
-      (prof?.pyramidConfidence as PyramidConfidence) || 'UNKNOWN',
-    pyramidBasis: prof?.pyramidBasis || 'UNSPECIFIED',
-    pyramidNote: prof?.pyramidNote || '',
-    olfactoryStrength: prof?.olfactoryStrength || 'MEDIUM',
-    intensity: prof?.intensity ?? m.intensity ?? 7,
-    substantivityHours: prof?.substantivityHours ?? m.substantivityHours ?? 24,
-    diffusion: prof?.diffusion ?? m.diffusion ?? 7,
-    volatility: (prof?.volatility || m.volatility) as VolatilityTier,
-    descriptiveNotes: prof?.descriptiveNotes || m.descriptiveNotes || '',
-    texture: prof?.texture || m.texture || '',
-    temperatureImpression:
-      prof?.temperatureImpression || m.temperatureImpression || 'Neutral',
-    personalNotes: shelfItem
-      ? shelfItem.personalNotes
-      : m.scope === 'USER'
-      ? m.personalNotes || ''
-      : '',
-    purity: m.purity || 'Unknown / Not Provided',
-    density: m.density ?? 1.0,
-    recommendedDilution: m.recommendedDilution ?? 100,
-    workingDilutionPct: shelfItem?.workingDilutionPct ?? null,
-    storageInfo: m.storageInfo || '',
-    shelfLifeMonths: m.shelfLifeMonths ?? 24,
-    flashPointCelsius: m.flashPointCelsius ?? null,
-    educationalObserve: safeParseArray(
-      prof?.educationalObserve || m.educationalObserve
-    ),
-    complements: safeParseArray(prof?.complements || m.complements),
-    contrasts: safeParseArray(prof?.contrasts || m.contrasts),
-    isSeedData: m.isSeedData ?? false,
-    isOnShelf,
-    isOnWorkbench,
-    pyramidOverrideCode: shelfItem?.pyramidOverrideCode ?? null,
-    favorite: Boolean(shelfItem?.favorite),
-    costPerGram: m.costPerGram ?? 0.35,
-    sourceSection: m.sourceSection || '',
-    catalogSource: m.catalogSource || '',
-    catalogSourceUrl: m.catalogSourceUrl || '',
-    sourceLicense: m.sourceLicense || '',
-    sourceLicenseUrl: m.sourceLicenseUrl || '',
-    starterPriority: m.starterPriority || 'OPTIONAL',
-  };
-}
-
-function mapPgLimitRowToDomain(
-  r: typeof materialRegulatoryLimits.$inferSelect,
-  matRecs?: MaterialRegulatoryRecord[],
-  matConsts?: MaterialConstituent[]
-): MaterialRegulatoryLimit {
-  const verStatus: RegulatoryVerificationStatus =
-    r.regulatoryDataStatus === 'PARTIALLY_VERIFIED_OFFICIAL_SOURCES'
-      ? 'PARTIALLY_VERIFIED'
-      : r.userUid
-      ? 'USER_ENTERED_UNVERIFIED'
-      : r.isDemoData
-      ? 'DEMO'
-      : 'LOOKUP_REQUIRED';
-  return {
-    id: r.id,
-    materialId: r.materialId,
-    ifraCategory: r.ifraCategory,
-    maxAllowedPercent: r.maxAllowedPercent ?? null,
-    allergens: r.allergens || 'Unknown / Not Provided',
-    restrictions: r.restrictions || '',
-    sourceDocument: r.sourceDocument || 'Unknown / Not Provided',
-    documentVersion: r.documentVersion || 'Unknown / Not Provided',
-    effectiveDate: r.effectiveDate || 'Unknown / Not Provided',
-    isDemoData: r.isDemoData ?? true,
-    verificationStatus: verStatus,
-    ifraStandardStatus: r.ifraStandardStatus || undefined,
-    ifraStandardType: r.ifraStandardType || undefined,
-    euCosmeticsStatus: r.euCosmeticsStatus || undefined,
-    euAnnex: r.euAnnex || undefined,
-    euReferenceNo: r.euReferenceNo || undefined,
-    euLabelThresholdLeaveOnPct: r.euLabelThresholdLeaveOnPct ?? null,
-    euLabelThresholdRinseOffPct: r.euLabelThresholdRinseOffPct ?? null,
-    regulatorySources: r.regulatorySources || undefined,
-    lastVerifiedDate: r.lastVerifiedDate || undefined,
-    euCosmeticLimitPercent: r.euMaxReadyForUsePct ?? null,
-    euAllergenDeclarable: r.euLabelThresholdLeaveOnPct !== null,
-    ...(matRecs ? { regulatoryRecords: matRecs } : {}),
-    ...(matConsts ? { constituents: matConsts } : {}),
+    activeVersionLabel: firstFormula ? firstFormula.activeVersionLabel : null,
   };
 }
 
@@ -4040,315 +3712,103 @@ export interface CatalogQueryResponse {
 export async function queryCatalogMaterials(
   options: CatalogQueryOptions = {}
 ): Promise<CatalogQueryResponse> {
-  const limit = Math.min(100, Math.max(1, options.limit ?? 50));
+  const limit = Math.min(1000, Math.max(1, options.limit ?? 1000));
   const offset = Math.max(0, options.offset ?? 0);
-  const mode = getPersistenceMode();
 
-  if (mode === 'memory') {
-    const {
-      materials: globalMats,
-      regulatoryLimits: globalLimits,
-      regulatoryRecords: globalRecs,
-      constituents: globalConsts,
-    } = ensureMemoryGlobalCatalogLoaded();
+  let allMaterials: RawMaterial[];
+  let allLimits: MaterialRegulatoryLimit[];
+  let allRecords: MaterialRegulatoryRecord[] = [];
+  let allConstituents: MaterialConstituent[] = [];
 
-    let allMaterials: RawMaterial[];
-    let allLimits: MaterialRegulatoryLimit[];
-    let allRecords: MaterialRegulatoryRecord[] = [];
-    const allConstituents: MaterialConstituent[] = globalConsts;
-
-    if (options.uid) {
-      const store = getOrCreateMemoryUserStore(
-        options.uid,
-        options.email || `${options.uid}@perfumery.studio`
-      );
-      const ownedCustomMats = memoryCustomUserMaterials.filter(
-        (m) => m.scope === 'USER' && m.ownerUid === options.uid
-      );
-      allMaterials = mergeCatalogAndShelfForUser(
-        globalMats,
-        ownedCustomMats,
-        store.shelfByMaterialId
-      );
-      const regMap = new Map<number, MaterialRegulatoryLimit>();
-      for (const r of globalLimits) regMap.set(r.materialId, r);
-      for (const [mId, ov] of store.userRegulatoryOverrides.entries()) {
-        regMap.set(mId, ov);
-      }
-      allLimits = Array.from(regMap.values());
-      if (options.includeRegulatory) {
-        allRecords = [...globalRecs, ...store.userRegulatoryRecords];
-      }
-    } else {
-      allMaterials = globalMats;
-      allLimits = globalLimits;
-      if (options.includeRegulatory) {
-        allRecords = globalRecs;
-      }
-    }
-
-    const totalCatalogMaterials = allMaterials.length;
-    const searchLower = (options.search || '').trim().toLowerCase();
-    const familyLower = (options.family || '').trim().toLowerCase();
-    const originLower = (options.origin || '').trim().toLowerCase();
-    const noteRoleLower = (options.noteRole || '').trim().toLowerCase();
-    const pyramidUpper = (options.pyramidCode || '').trim().toUpperCase();
-
-    const filtered = allMaterials.filter((m) => {
-      if (options.workbenchOnly && !m.isOnWorkbench) return false;
-      if (options.shelfOnly && !m.isOnShelf && !m.isOnWorkbench) return false;
-      if (
-        familyLower &&
-        familyLower !== 'all' &&
-        m.primaryFamily.toLowerCase() !== familyLower
-      ) {
-        return false;
-      }
-      if (
-        originLower &&
-        originLower !== 'all' &&
-        m.naturalOrSynthetic.toLowerCase() !== originLower &&
-        (m.materialKind || '').toLowerCase() !== originLower
-      ) {
-        return false;
-      }
-      if (
-        noteRoleLower &&
-        noteRoleLower !== 'all' &&
-        m.volatility.toLowerCase() !== noteRoleLower
-      ) {
-        return false;
-      }
-      if (pyramidUpper && pyramidUpper !== 'ALL') {
-        const effectiveCode = (
-          m.pyramidOverrideCode ||
-          m.pyramidUiCode ||
-          ''
-        ).toUpperCase();
-        if (effectiveCode !== pyramidUpper) return false;
-      }
-      if (searchLower) {
-        const hay = [
-          m.name,
-          m.displayName,
-          m.casNumber,
-          m.inciName,
-          m.primaryFamily,
-          m.descriptiveNotes,
-          ...(m.facets || []),
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(searchLower)) return false;
-      }
-      return true;
-    });
-
-    const total = filtered.length;
-    const pagedItems = filtered.slice(offset, offset + limit);
-    const pagedIds = new Set(pagedItems.map((m) => m.id));
-    const pagedLimits = allLimits
-      .filter((l) => pagedIds.has(l.materialId))
-      .map((l) => {
-        if (!options.includeRegulatory) {
-          const { regulatoryRecords: _r, constituents: _c, ...light } = l;
-          return light;
-        }
-        return l;
-      });
-
-    const response: CatalogQueryResponse = {
-      totalCatalogMaterials,
-      total,
-      limit,
-      offset,
-      hasMore: offset + pagedItems.length < total,
-      items: pagedItems,
-      materials: pagedItems,
-      regulatoryLimits: pagedLimits,
-    };
-
+  if (options.uid) {
+    const ws = await fetchFullWorkspace(
+      options.uid,
+      options.email || `${options.uid}@perfumery.studio`
+    );
+    allMaterials = ws.materials;
+    allLimits = ws.regulatoryLimits;
     if (options.includeRegulatory) {
-      response.regulatoryRecords = allRecords.filter((r) =>
-        pagedIds.has(r.materialId)
-      );
-      response.constituents = allConstituents.filter((c) =>
-        pagedIds.has(c.materialId)
-      );
+      allRecords = ws.regulatoryRecords;
+      allConstituents = ws.constituents;
     }
-
-    return response;
+  } else {
+    const globalCatalog = loadGlobalCatalogV11();
+    allMaterials = globalCatalog.materials;
+    allLimits = globalCatalog.regulatoryLimits;
+    if (options.includeRegulatory) {
+      allRecords = globalCatalog.regulatoryRecords;
+      allConstituents = globalCatalog.constituents;
+    }
   }
 
-  // PostgreSQL mode: execute filtering, count, and pagination directly in SQL/Drizzle
-  const activeDb = requirePostgresDb();
-  const totalCatalogMaterials = await assertPostgresCatalogInitialized(activeDb);
+  const totalCatalogMaterials = allMaterials.length;
+  const searchLower = (options.search || '').trim().toLowerCase();
+  const familyLower = (options.family || '').trim().toLowerCase();
+  const originLower = (options.origin || '').trim().toLowerCase();
+  const noteRoleLower = (options.noteRole || '').trim().toLowerCase();
+  const pyramidUpper = (options.pyramidCode || '').trim().toUpperCase();
 
-  const scopeClause = options.uid
-    ? or(
-        eq(materials.scope, 'GLOBAL'),
-        and(eq(materials.scope, 'USER'), eq(materials.ownerUid, options.uid))
-      )
-    : eq(materials.scope, 'GLOBAL');
-
-  const conditions: any[] = [scopeClause];
-
-  let shelfByMatId = new Map<number, UserShelfItem>();
-  if (options.uid || options.shelfOnly || options.workbenchOnly) {
-    const uidToLoad = options.uid || '';
-    if (uidToLoad) {
-      const shelfItems = await getUserShelf(uidToLoad);
-      shelfByMatId = new Map(shelfItems.map((s) => [s.materialId, s]));
+  const filtered = allMaterials.filter((m) => {
+    if (options.workbenchOnly && !m.isOnWorkbench) {
+      return false;
     }
-    if (options.workbenchOnly) {
-      const wbIds = Array.from(shelfByMatId.values())
-        .filter((s) => s.isOnWorkbench)
-        .map((s) => s.materialId);
-      if (wbIds.length === 0) {
-        return {
-          totalCatalogMaterials,
-          total: 0,
-          limit,
-          offset,
-          hasMore: false,
-          items: [],
-          materials: [],
-          regulatoryLimits: [],
-        };
+    if (options.shelfOnly && !m.isOnShelf && !m.isOnWorkbench) {
+      return false;
+    }
+    if (
+      familyLower &&
+      familyLower !== 'all' &&
+      m.primaryFamily.toLowerCase() !== familyLower
+    ) {
+      return false;
+    }
+    if (
+      originLower &&
+      originLower !== 'all' &&
+      m.naturalOrSynthetic.toLowerCase() !== originLower &&
+      (m.materialKind || '').toLowerCase() !== originLower
+    ) {
+      return false;
+    }
+    if (
+      noteRoleLower &&
+      noteRoleLower !== 'all' &&
+      m.volatility.toLowerCase() !== noteRoleLower
+    ) {
+      return false;
+    }
+    if (pyramidUpper && pyramidUpper !== 'ALL') {
+      const effectiveCode = (
+        m.pyramidOverrideCode ||
+        m.pyramidUiCode ||
+        ''
+      ).toUpperCase();
+      if (effectiveCode !== pyramidUpper) {
+        return false;
       }
-      conditions.push(inArray(materials.id, wbIds));
-    } else if (options.shelfOnly) {
-      const shIds = Array.from(shelfByMatId.keys());
-      if (shIds.length === 0) {
-        return {
-          totalCatalogMaterials,
-          total: 0,
-          limit,
-          offset,
-          hasMore: false,
-          items: [],
-          materials: [],
-          regulatoryLimits: [],
-        };
-      }
-      conditions.push(inArray(materials.id, shIds));
     }
-  }
+    if (searchLower) {
+      const hay = [
+        m.name,
+        m.casNumber,
+        m.inciName,
+        m.primaryFamily,
+        m.descriptiveNotes,
+        ...(m.facets || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(searchLower)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
-  const familyTrimmed = (options.family || '').trim();
-  if (familyTrimmed && familyTrimmed.toLowerCase() !== 'all') {
-    conditions.push(ilike(materials.primaryFamily, familyTrimmed));
-  }
-
-  const originTrimmed = (options.origin || '').trim();
-  if (originTrimmed && originTrimmed.toLowerCase() !== 'all') {
-    conditions.push(
-      or(
-        ilike(materials.naturalOrSynthetic, originTrimmed),
-        ilike(materials.materialKind, originTrimmed)
-      )
-    );
-  }
-
-  const noteRoleTrimmed = (options.noteRole || '').trim();
-  if (noteRoleTrimmed && noteRoleTrimmed.toLowerCase() !== 'all') {
-    conditions.push(ilike(materials.volatility, noteRoleTrimmed));
-  }
-
-  const pyramidTrimmed = (options.pyramidCode || '').trim().toUpperCase();
-  if (pyramidTrimmed && pyramidTrimmed !== 'ALL') {
-    conditions.push(eq(materialOlfactoryProfiles.pyramidUiCode, pyramidTrimmed));
-  }
-
-  const searchTrimmed = (options.search || '').trim();
-  if (searchTrimmed) {
-    const pattern = `%${searchTrimmed}%`;
-    conditions.push(
-      or(
-        ilike(materials.name, pattern),
-        ilike(materials.displayName, pattern),
-        ilike(materials.casNumber, pattern),
-        ilike(materials.inciName, pattern),
-        ilike(materials.primaryFamily, pattern),
-        ilike(materials.descriptiveNotes, pattern),
-        ilike(materials.facets, pattern)
-      )
-    );
-  }
-
-  const whereCondition = and(...conditions);
-
-  const [countRow] = await activeDb
-    .select({ value: count() })
-    .from(materials)
-    .leftJoin(
-      materialOlfactoryProfiles,
-      eq(materials.id, materialOlfactoryProfiles.materialId)
-    )
-    .where(whereCondition);
-
-  const total = Number(countRow?.value ?? 0);
-  if (total === 0) {
-    return {
-      totalCatalogMaterials,
-      total: 0,
-      limit,
-      offset,
-      hasMore: false,
-      items: [],
-      materials: [],
-      regulatoryLimits: [],
-    };
-  }
-
-  const joinedRows = await activeDb
-    .select({
-      material: materials,
-      profile: materialOlfactoryProfiles,
-    })
-    .from(materials)
-    .leftJoin(
-      materialOlfactoryProfiles,
-      eq(materials.id, materialOlfactoryProfiles.materialId)
-    )
-    .where(whereCondition)
-    .orderBy(materials.id)
-    .limit(limit)
-    .offset(offset);
-
-  const pagedItems: RawMaterial[] = joinedRows.map(({ material, profile }) =>
-    mapPgMaterialRowToRawMaterial(
-      material,
-      profile,
-      shelfByMatId.get(material.id) || null
-    )
-  );
-
-  const pagedIds = pagedItems.map((m) => m.id);
-  const limitRows =
-    pagedIds.length > 0
-      ? await activeDb
-          .select()
-          .from(materialRegulatoryLimits)
-          .where(
-            and(
-              inArray(materialRegulatoryLimits.materialId, pagedIds),
-              options.uid
-                ? or(
-                    isNull(materialRegulatoryLimits.userUid),
-                    eq(materialRegulatoryLimits.userUid, options.uid)
-                  )
-                : isNull(materialRegulatoryLimits.userUid)
-            )
-          )
-      : [];
-
-  const limitByMatId = new Map<number, MaterialRegulatoryLimit>();
-  for (const r of limitRows) {
-    const existing = limitByMatId.get(r.materialId);
-    if (existing && !r.userUid) continue;
-    limitByMatId.set(r.materialId, mapPgLimitRowToDomain(r));
-  }
+  const total = filtered.length;
+  const pagedItems = filtered.slice(offset, offset + limit);
+  const pagedIds = new Set(pagedItems.map((m) => m.id));
+  const pagedLimits = allLimits.filter((l) => pagedIds.has(l.materialId));
 
   const response: CatalogQueryResponse = {
     totalCatalogMaterials,
@@ -4358,68 +3818,16 @@ export async function queryCatalogMaterials(
     hasMore: offset + pagedItems.length < total,
     items: pagedItems,
     materials: pagedItems,
-    regulatoryLimits: Array.from(limitByMatId.values()),
+    regulatoryLimits: pagedLimits,
   };
 
-  if (options.includeRegulatory && pagedIds.length > 0) {
-    const recRows = await activeDb
-      .select()
-      .from(materialRegulatoryRecords)
-      .where(
-        and(
-          inArray(materialRegulatoryRecords.materialId, pagedIds),
-          options.uid
-            ? or(
-                isNull(materialRegulatoryRecords.userUid),
-                eq(materialRegulatoryRecords.userUid, options.uid)
-              )
-            : isNull(materialRegulatoryRecords.userUid)
-        )
-      );
-    const constRows = await activeDb
-      .select()
-      .from(materialConstituents)
-      .where(inArray(materialConstituents.materialId, pagedIds));
-
-    response.regulatoryRecords = recRows.map((rec) => ({
-      id: rec.id,
-      materialId: rec.materialId,
-      userUid: rec.userUid,
-      jurisdiction: rec.jurisdiction,
-      authority: rec.authority as RegulatoryAuthority,
-      ruleType: rec.ruleType as RegulatoryRuleType,
-      status: rec.status,
-      standardOrAnnex: rec.standardOrAnnex,
-      referenceNumber: rec.referenceNumber,
-      productCategory: rec.productCategory ?? null,
-      maxFinishedProductPct: rec.maxFinishedProductPct ?? null,
-      maxReadyForUsePct: rec.maxReadyForUsePct ?? null,
-      labelThresholdLeaveOnPct: rec.labelThresholdLeaveOnPct ?? null,
-      labelThresholdRinseOffPct: rec.labelThresholdRinseOffPct ?? null,
-      conditionText: rec.conditionText || '',
-      summary: rec.summary || '',
-      sourceUrl: rec.sourceUrl || '',
-      sourceDocument: rec.sourceDocument || '',
-      sourceVersion: rec.sourceVersion || '',
-      verifiedAt: rec.verifiedAt ?? null,
-      verificationStatus: rec.verificationStatus as RegulatoryVerificationStatus,
-    }));
-
-    response.constituents = constRows.map((c) => ({
-      id: c.id,
-      materialId: c.materialId,
-      constituentName: c.constituentName,
-      constituentCas: c.constituentCas || '',
-      typicalPct: c.typicalPct ?? null,
-      minPct: c.minPct ?? null,
-      maxPct: c.maxPct ?? null,
-      labelThresholdLeaveOnPct: c.labelThresholdLeaveOnPct ?? 0.001,
-      labelThresholdRinseOffPct: c.labelThresholdRinseOffPct ?? 0.01,
-      riskNote: c.riskNote || '',
-      sourceUrl: c.sourceUrl || '',
-      sourceDocument: c.sourceDocument || '',
-      verificationStatus: c.verificationStatus as RegulatoryVerificationStatus,
-    }));
+  if (options.includeRegulatory) {
+    response.regulatoryRecords = allRecords.filter((r) =>
+      pagedIds.has(r.materialId)
+    );
+    response.constituents = allConstituents.filter((c) =>
+      pagedIds.has(c.materialId)
+    );
   }
 
   return response;
@@ -4436,136 +3844,34 @@ export async function getCatalogMaterialDetail(
   uid?: string | null,
   email?: string
 ): Promise<MaterialDetailResponse> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const { materials: globalMats, regulatoryLimits: globalLimits } =
-      ensureMemoryGlobalCatalogLoaded();
-    if (uid) {
-      const store = getOrCreateMemoryUserStore(
-        uid,
-        email || `${uid}@perfumery.studio`
-      );
-      const ownedCustomMats = memoryCustomUserMaterials.filter(
-        (m) => m.scope === 'USER' && m.ownerUid === uid
-      );
-      const hydrated = mergeCatalogAndShelfForUser(
-        globalMats,
-        ownedCustomMats,
-        store.shelfByMaterialId
-      );
-      const mat = hydrated.find((m) => m.id === materialId);
-      if (!mat) {
-        throw new Error(`NotFound: Material #${materialId} not found.`);
-      }
-      const limit =
-        store.userRegulatoryOverrides.get(materialId) ||
-        globalLimits.find((r) => r.materialId === materialId) ||
-        null;
-      const reviews = store.usageReviews.filter(
-        (u) => u.materialId === materialId
-      );
-      return {
-        material: mat,
-        regulatoryLimit: limit,
-        usageReviews: reviews,
-      };
-    }
-
-    const mat = globalMats.find((m) => m.id === materialId);
+  if (uid) {
+    const ws = await fetchFullWorkspace(uid, email || `${uid}@perfumery.studio`);
+    const mat = ws.materials.find((m) => m.id === materialId);
     if (!mat) {
       throw new Error(`NotFound: Material #${materialId} not found.`);
     }
     const limit =
-      globalLimits.find((r) => r.materialId === materialId) || null;
+      ws.regulatoryLimits.find((r) => r.materialId === materialId) || null;
+    const reviews = ws.usageReviews.filter((u) => u.materialId === materialId);
     return {
       material: mat,
       regulatoryLimit: limit,
-      usageReviews: [],
+      usageReviews: reviews,
     };
   }
 
-  const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
-
-  const [matRow] = await activeDb
-    .select()
-    .from(materials)
-    .where(
-      and(
-        eq(materials.id, materialId),
-        uid
-          ? or(
-              eq(materials.scope, 'GLOBAL'),
-              and(eq(materials.scope, 'USER'), eq(materials.ownerUid, uid))
-            )
-          : eq(materials.scope, 'GLOBAL')
-      )
-    );
-
-  if (!matRow) {
+  const globalCatalog = loadGlobalCatalogV11();
+  const mat = globalCatalog.materials.find((m) => m.id === materialId);
+  if (!mat) {
     throw new Error(`NotFound: Material #${materialId} not found.`);
   }
-
-  const [profRow] = await activeDb
-    .select()
-    .from(materialOlfactoryProfiles)
-    .where(eq(materialOlfactoryProfiles.materialId, materialId));
-
-  let shelfEntry: UserShelfItem | null = null;
-  let reviews: MaterialUsageReview[] = [];
-  if (uid) {
-    const userShelfList = await getUserShelf(uid);
-    shelfEntry =
-      userShelfList.find((s) => s.materialId === materialId) || null;
-    const rawRevs = await activeDb
-      .select()
-      .from(materialUsageReviews)
-      .where(
-        and(
-          eq(materialUsageReviews.userUid, uid),
-          eq(materialUsageReviews.materialId, materialId)
-        )
-      );
-    reviews = rawRevs.map((rev) => ({
-      id: rev.id,
-      materialId: rev.materialId,
-      formulaId: rev.formulaId,
-      formulaVersionId: rev.formulaVersionId ?? null,
-      formulaName: rev.formulaName,
-      versionLabel: rev.versionLabel,
-      percentageUsed: rev.percentageUsed,
-      effectivenessScore: rev.effectivenessScore ?? 8,
-      observation: rev.observation || '',
-      createdAt: rev.createdAt
-        ? rev.createdAt.toISOString().slice(0, 10)
-        : '2026-10-20',
-    }));
-  }
-
-  const limitRows = await activeDb
-    .select()
-    .from(materialRegulatoryLimits)
-    .where(
-      and(
-        eq(materialRegulatoryLimits.materialId, materialId),
-        uid
-          ? or(
-              isNull(materialRegulatoryLimits.userUid),
-              eq(materialRegulatoryLimits.userUid, uid)
-            )
-          : isNull(materialRegulatoryLimits.userUid)
-      )
-    );
-
-  const chosenLimitRow =
-    limitRows.find((r) => r.userUid === uid) || limitRows[0] || null;
-
+  const limit =
+    globalCatalog.regulatoryLimits.find((r) => r.materialId === materialId) ||
+    null;
   return {
-    material: mapPgMaterialRowToRawMaterial(matRow, profRow, shelfEntry),
-    regulatoryLimit: chosenLimitRow
-      ? mapPgLimitRowToDomain(chosenLimitRow)
-      : null,
-    usageReviews: reviews,
+    material: mat,
+    regulatoryLimit: limit,
+    usageReviews: [],
   };
 }
 
@@ -4584,63 +3890,18 @@ export async function getCatalogMaterialRegulatoryDossier(
   uid?: string | null,
   email?: string
 ): Promise<MaterialRegulatoryDossierResponse> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const {
-      materials: globalMats,
-      regulatoryLimits: globalLimits,
-      regulatoryRecords: globalRecs,
-      constituents: globalConsts,
-    } = ensureMemoryGlobalCatalogLoaded();
-
-    if (uid) {
-      const store = getOrCreateMemoryUserStore(
-        uid,
-        email || `${uid}@perfumery.studio`
-      );
-      const ownedCustomMats = memoryCustomUserMaterials.filter(
-        (m) => m.scope === 'USER' && m.ownerUid === uid
-      );
-      const mat = [...globalMats, ...ownedCustomMats].find(
-        (m) => m.id === materialId
-      );
-      if (!mat) {
-        throw new Error(`NotFound: Material #${materialId} not found.`);
-      }
-      const limit =
-        store.userRegulatoryOverrides.get(materialId) ||
-        globalLimits.find((r) => r.materialId === materialId) ||
-        null;
-      const records = [
-        ...globalRecs.filter((r) => r.materialId === materialId),
-        ...store.userRegulatoryRecords.filter((r) => r.materialId === materialId),
-      ];
-      const constituents = globalConsts.filter(
-        (c) => c.materialId === materialId
-      );
-      const verificationStatus: RegulatoryVerificationStatus =
-        limit?.verificationStatus ||
-        records[0]?.verificationStatus ||
-        'LOOKUP_REQUIRED';
-      return {
-        materialId: mat.id,
-        materialName: mat.name,
-        casNumber: mat.casNumber,
-        verificationStatus,
-        regulatoryLimit: limit,
-        regulatoryRecords: records,
-        constituents,
-      };
-    }
-
-    const mat = globalMats.find((m) => m.id === materialId);
+  if (uid) {
+    const ws = await fetchFullWorkspace(uid, email || `${uid}@perfumery.studio`);
+    const mat = ws.materials.find((m) => m.id === materialId);
     if (!mat) {
       throw new Error(`NotFound: Material #${materialId} not found.`);
     }
     const limit =
-      globalLimits.find((r) => r.materialId === materialId) || null;
-    const records = globalRecs.filter((r) => r.materialId === materialId);
-    const constituents = globalConsts.filter(
+      ws.regulatoryLimits.find((r) => r.materialId === materialId) || null;
+    const records = ws.regulatoryRecords.filter(
+      (r) => r.materialId === materialId
+    );
+    const constituents = ws.constituents.filter(
       (c) => c.materialId === materialId
     );
     const verificationStatus: RegulatoryVerificationStatus =
@@ -4658,504 +3919,33 @@ export async function getCatalogMaterialRegulatoryDossier(
     };
   }
 
-  const activeDb = requirePostgresDb();
-  await assertPostgresCatalogInitialized(activeDb);
-
-  const [matRow] = await activeDb
-    .select()
-    .from(materials)
-    .where(
-      and(
-        eq(materials.id, materialId),
-        uid
-          ? or(
-              eq(materials.scope, 'GLOBAL'),
-              and(eq(materials.scope, 'USER'), eq(materials.ownerUid, uid))
-            )
-          : eq(materials.scope, 'GLOBAL')
-      )
-    );
-
-  if (!matRow) {
+  const globalCatalog = loadGlobalCatalogV11();
+  const mat = globalCatalog.materials.find((m) => m.id === materialId);
+  if (!mat) {
     throw new Error(`NotFound: Material #${materialId} not found.`);
   }
-
-  const [limitRows, recRows, constRows] = await Promise.all([
-    activeDb
-      .select()
-      .from(materialRegulatoryLimits)
-      .where(
-        and(
-          eq(materialRegulatoryLimits.materialId, materialId),
-          uid
-            ? or(
-                isNull(materialRegulatoryLimits.userUid),
-                eq(materialRegulatoryLimits.userUid, uid)
-              )
-            : isNull(materialRegulatoryLimits.userUid)
-        )
-      ),
-    activeDb
-      .select()
-      .from(materialRegulatoryRecords)
-      .where(
-        and(
-          eq(materialRegulatoryRecords.materialId, materialId),
-          uid
-            ? or(
-                isNull(materialRegulatoryRecords.userUid),
-                eq(materialRegulatoryRecords.userUid, uid)
-              )
-            : isNull(materialRegulatoryRecords.userUid)
-        )
-      ),
-    activeDb
-      .select()
-      .from(materialConstituents)
-      .where(eq(materialConstituents.materialId, materialId)),
-  ]);
-
-  const mappedRecords: MaterialRegulatoryRecord[] = recRows.map((rec) => ({
-    id: rec.id,
-    materialId: rec.materialId,
-    userUid: rec.userUid,
-    jurisdiction: rec.jurisdiction,
-    authority: rec.authority as RegulatoryAuthority,
-    ruleType: rec.ruleType as RegulatoryRuleType,
-    status: rec.status,
-    standardOrAnnex: rec.standardOrAnnex,
-    referenceNumber: rec.referenceNumber,
-    productCategory: rec.productCategory ?? null,
-    maxFinishedProductPct: rec.maxFinishedProductPct ?? null,
-    maxReadyForUsePct: rec.maxReadyForUsePct ?? null,
-    labelThresholdLeaveOnPct: rec.labelThresholdLeaveOnPct ?? null,
-    labelThresholdRinseOffPct: rec.labelThresholdRinseOffPct ?? null,
-    conditionText: rec.conditionText || '',
-    summary: rec.summary || '',
-    sourceUrl: rec.sourceUrl || '',
-    sourceDocument: rec.sourceDocument || '',
-    sourceVersion: rec.sourceVersion || '',
-    verifiedAt: rec.verifiedAt ?? null,
-    verificationStatus: rec.verificationStatus as RegulatoryVerificationStatus,
-  }));
-
-  const mappedConstituents: MaterialConstituent[] = constRows.map((c) => ({
-    id: c.id,
-    materialId: c.materialId,
-    constituentName: c.constituentName,
-    constituentCas: c.constituentCas || '',
-    typicalPct: c.typicalPct ?? null,
-    minPct: c.minPct ?? null,
-    maxPct: c.maxPct ?? null,
-    labelThresholdLeaveOnPct: c.labelThresholdLeaveOnPct ?? 0.001,
-    labelThresholdRinseOffPct: c.labelThresholdRinseOffPct ?? 0.01,
-    riskNote: c.riskNote || '',
-    sourceUrl: c.sourceUrl || '',
-    sourceDocument: c.sourceDocument || '',
-    verificationStatus: c.verificationStatus as RegulatoryVerificationStatus,
-  }));
-
-  const chosenLimitRow =
-    limitRows.find((r) => r.userUid === uid) || limitRows[0] || null;
-  const domainLimit = chosenLimitRow
-    ? mapPgLimitRowToDomain(chosenLimitRow, mappedRecords, mappedConstituents)
-    : null;
-
+  const limit =
+    globalCatalog.regulatoryLimits.find((r) => r.materialId === materialId) ||
+    null;
+  const records = globalCatalog.regulatoryRecords.filter(
+    (r) => r.materialId === materialId
+  );
+  const constituents = globalCatalog.constituents.filter(
+    (c) => c.materialId === materialId
+  );
   const verificationStatus: RegulatoryVerificationStatus =
-    domainLimit?.verificationStatus ||
-    mappedRecords[0]?.verificationStatus ||
+    limit?.verificationStatus ||
+    records[0]?.verificationStatus ||
     'LOOKUP_REQUIRED';
-
   return {
-    materialId: matRow.id,
-    materialName: matRow.name,
-    casNumber: matRow.casNumber || 'Unknown / Not Provided',
+    materialId: mat.id,
+    materialName: mat.name,
+    casNumber: mat.casNumber,
     verificationStatus,
-    regulatoryLimit: domainLimit,
-    regulatoryRecords: mappedRecords,
-    constituents: mappedConstituents,
+    regulatoryLimit: limit,
+    regulatoryRecords: records,
+    constituents,
   };
-}
-
-export async function getUserFormulas(uid: string): Promise<Formula[]> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    return structuredClone(store.formulas);
-  }
-
-  const activeDb = requirePostgresDb();
-  const rawFormulas = await activeDb
-    .select()
-    .from(formulas)
-    .where(eq(formulas.userUid, uid))
-    .orderBy(formulas.id);
-
-  if (rawFormulas.length === 0) {
-    return [];
-  }
-
-  const rawVersions = await activeDb
-    .select()
-    .from(formulaVersions)
-    .where(eq(formulaVersions.userUid, uid));
-
-  const versionIds = rawVersions.map((v) => v.id);
-  const rawFormulaVersionItems =
-    versionIds.length > 0
-      ? await activeDb
-          .select()
-          .from(formulaVersionItems)
-          .where(inArray(formulaVersionItems.formulaVersionId, versionIds))
-      : [];
-
-  return rawFormulas.map((f) => {
-    const fVers = rawVersions
-      .filter((v) => v.formulaId === f.id)
-      .sort((a, b) => a.id - b.id);
-    return {
-      id: f.id,
-      projectId: f.projectId || 1,
-      projectName: f.projectName || 'Personal Study',
-      name: f.name,
-      status: (f.status as FormulaStatus) || 'Draft',
-      description: f.description || '',
-      intendedProduct: f.intendedProduct || 'Eau de Parfum (20% conc.)',
-      ifraCategory: f.ifraCategory || 'Category 4 (Fine Fragrance)',
-      finalProductConcentration: f.finalProductConcentration ?? 20,
-      targetBrief: f.targetBrief || '',
-      targetFamilies: safeParseArray(f.targetFamilies),
-      targetFacets: safeParseObject(f.targetFacetsJson, {}),
-      targetIntensity: f.targetIntensity ?? 7,
-      targetTexture: f.targetTexture || '',
-      targetAtmosphere: f.targetAtmosphere || '',
-      targetTemperature: f.targetTemperature || 'Neutral',
-      targetColor: f.targetColor || '#2E6F40',
-      targetMood: f.targetMood || '',
-      targetDiffusion: f.targetDiffusion ?? 7,
-      targetEvolution: f.targetEvolution || '',
-      targetDrydown: f.targetDrydown || '',
-      materialsToAvoid: safeParseArray(f.materialsToAvoid),
-      isFavorite: f.isFavorite ?? false,
-      tags: safeParseArray(f.tags),
-      activeVersionLabel: f.activeVersionLabel || 'V1',
-      createdAt: f.createdAt ? f.createdAt.toISOString().slice(0, 10) : '2026-10-10',
-      updatedAt: f.updatedAt ? f.updatedAt.toISOString().slice(0, 10) : '2026-10-22',
-      versions: fVers.map((v): FormulaVersion => {
-        const dbNormRows = rawFormulaVersionItems
-          .filter((it) => it.formulaVersionId === v.id)
-          .sort((a, b) => a.lineOrder - b.lineOrder);
-
-        if (dbNormRows.length > 0) {
-          const normalizedItems: NormalizedFormulaVersionItem[] = dbNormRows.map(
-            (r) => ({
-              id: r.id,
-              formulaVersionId: r.formulaVersionId,
-              lineOrder: r.lineOrder,
-              itemType: (r.itemType as 'MATERIAL' | 'ACCORD') || 'MATERIAL',
-              materialId: r.materialId ?? null,
-              accordId: r.accordId ?? null,
-              accordVersionId: r.accordVersionId ?? null,
-              name: r.name,
-              percentage: r.percentage,
-              quantityGrams: r.quantityGrams,
-              dilutionPct: r.dilutionPct,
-              solvent: r.solvent,
-              activeMaterialPct: r.activeMaterialPct,
-              supplier: r.supplier,
-              costPerGram: r.costPerGram,
-              notes: r.notes,
-              createdAt: r.createdAt
-                ? r.createdAt.toISOString()
-                : new Date().toISOString(),
-            })
-          );
-
-          const items: FormulaLineItem[] = normalizedItems.map((n) => ({
-            id: `line-${n.id}`,
-            lineOrder: n.lineOrder,
-            type: n.itemType === 'ACCORD' ? 'accord' : 'material',
-            itemType: n.itemType,
-            materialId: n.materialId ?? undefined,
-            accordId: n.accordId ?? undefined,
-            accordVersionId: n.accordVersionId,
-            name: n.name,
-            percentage: n.percentage,
-            quantityGrams: n.quantityGrams,
-            dilutionPercent: n.dilutionPct,
-            solvent: n.solvent,
-            activeMaterialPercent: n.activeMaterialPct,
-            supplier: n.supplier,
-            costPerGram: n.costPerGram,
-            notes: n.notes,
-          }));
-
-          return {
-            id: v.id,
-            formulaId: v.formulaId,
-            parentVersionId: v.parentVersionId ?? null,
-            versionLabel: v.versionLabel,
-            status: (v.status as 'Draft' | 'Committed') || 'Committed',
-            versionNotes: v.versionNotes || '',
-            maturationDays: v.maturationDays ?? 14,
-            items,
-            normalizedItems,
-            createdAt: v.createdAt
-              ? v.createdAt.toISOString().slice(0, 10)
-              : '2026-10-15',
-          };
-        }
-
-        return {
-          id: v.id,
-          formulaId: v.formulaId,
-          parentVersionId: v.parentVersionId ?? null,
-          versionLabel: v.versionLabel,
-          status: (v.status as 'Draft' | 'Committed') || 'Committed',
-          versionNotes: v.versionNotes || '',
-          maturationDays: v.maturationDays ?? 14,
-          items: safeParseObject(v.itemsJson, []),
-          createdAt: v.createdAt
-            ? v.createdAt.toISOString().slice(0, 10)
-            : '2026-10-15',
-        };
-      }),
-    };
-  });
-}
-
-export async function getUserFormulaById(
-  uid: string,
-  formulaId: number
-): Promise<Formula> {
-  const all = await getUserFormulas(uid);
-  const found = all.find((f) => f.id === formulaId);
-  if (!found) {
-    throw new Error(`NotFound: Formula #${formulaId} not found.`);
-  }
-  return found;
-}
-
-export async function getUserAccords(uid: string): Promise<AccordDefinition[]> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    return structuredClone(store.accords);
-  }
-
-  const activeDb = requirePostgresDb();
-  const rawAccords = await activeDb
-    .select()
-    .from(accords)
-    .where(eq(accords.userUid, uid))
-    .orderBy(accords.id);
-
-  if (rawAccords.length === 0) {
-    return [];
-  }
-
-  const rawAccordVersions = await activeDb
-    .select()
-    .from(accordVersions)
-    .where(eq(accordVersions.userUid, uid));
-
-  const versionIds = rawAccordVersions.map((v) => v.id);
-  const rawAccordVersionItems =
-    versionIds.length > 0
-      ? await activeDb
-          .select()
-          .from(accordVersionItems)
-          .where(inArray(accordVersionItems.accordVersionId, versionIds))
-      : [];
-
-  return rawAccords.map((acc) => {
-    const accVers = rawAccordVersions
-      .filter((v) => v.accordId === acc.id)
-      .sort((a, b) => a.id - b.id);
-
-    const versionSnapshots: AccordVersionSnapshot[] = accVers.map((v) => {
-      const vItems = rawAccordVersionItems
-        .filter((it) => it.accordVersionId === v.id)
-        .sort((a, b) => a.lineOrder - b.lineOrder)
-        .map((it) => ({
-          id: it.id,
-          lineOrder: it.lineOrder,
-          materialId: it.materialId,
-          materialName: it.materialName,
-          percentage: it.percentage,
-          dilutionPercent: it.dilutionPct ?? 100,
-          notes: it.notes || '',
-        }));
-      return {
-        id: v.id,
-        accordId: acc.id,
-        versionId: `acc-${acc.id}-v${v.id}`,
-        versionLabel: v.versionLabel,
-        status: (v.status as 'Draft' | 'Committed') || 'Committed',
-        createdAt: v.createdAt
-          ? v.createdAt.toISOString().slice(0, 16).replace('T', ' ')
-          : '2026-10-01 10:00',
-        versionNotes: v.versionNotes || '',
-        items: vItems.length > 0 ? vItems : safeParseObject(acc.itemsJson, []),
-      };
-    });
-
-    const activeVerSnap =
-      versionSnapshots.find((v) => v.versionLabel === acc.activeVersionLabel) ||
-      versionSnapshots[versionSnapshots.length - 1];
-
-    return {
-      id: acc.id,
-      name: acc.name,
-      category: acc.category,
-      description: acc.description || '',
-      objective: acc.objective || '',
-      usageSuggestions: acc.usageSuggestions || '',
-      notes: acc.notes || '',
-      isEducational: acc.isEducational ?? false,
-      activeVersionId: activeVerSnap?.id,
-      activeVersionLabel:
-        acc.activeVersionLabel || activeVerSnap?.versionLabel || 'V1',
-      items: activeVerSnap
-        ? activeVerSnap.items
-        : safeParseObject(acc.itemsJson, []),
-      olfactoryProfile: safeParseObject(acc.olfactoryProfileJson, {}),
-      versions: versionSnapshots,
-    };
-  });
-}
-
-export async function getUserExperiments(
-  uid: string,
-  formulaId?: number | null
-): Promise<ExperimentEntry[]> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    const list = formulaId
-      ? store.experiments.filter((e) => e.formulaId === formulaId)
-      : store.experiments;
-    return structuredClone(list);
-  }
-
-  const activeDb = requirePostgresDb();
-  const rows = await activeDb
-    .select()
-    .from(experiments)
-    .where(
-      formulaId
-        ? and(eq(experiments.userUid, uid), eq(experiments.formulaId, formulaId))
-        : eq(experiments.userUid, uid)
-    )
-    .orderBy(desc(experiments.id));
-
-  return rows.map((exp) => ({
-    id: exp.id,
-    formulaId: exp.formulaId,
-    formulaVersionId: exp.formulaVersionId ?? null,
-    formulaVersionLabel: exp.formulaVersionLabel,
-    stageLabel: exp.stageLabel,
-    observation: exp.observation,
-    recordedAt: exp.recordedAt,
-  }));
-}
-
-export async function getUserEvaluations(
-  uid: string,
-  formulaId?: number | null
-): Promise<SensoryEvaluation[]> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    const list = formulaId
-      ? store.evaluations.filter((e) => e.formulaId === formulaId)
-      : store.evaluations;
-    return structuredClone(list);
-  }
-
-  const activeDb = requirePostgresDb();
-  const rows = await activeDb
-    .select()
-    .from(evaluations)
-    .where(
-      formulaId
-        ? and(eq(evaluations.userUid, uid), eq(evaluations.formulaId, formulaId))
-        : eq(evaluations.userUid, uid)
-    )
-    .orderBy(desc(evaluations.id));
-
-  return rows.map((ev) => ({
-    id: ev.id,
-    formulaId: ev.formulaId,
-    formulaVersionId: ev.formulaVersionId ?? null,
-    formulaVersionLabel: ev.formulaVersionLabel,
-    checkpoint: ev.checkpoint,
-    overallScore: ev.overallScore ?? 8,
-    scores: safeParseObject(ev.scoresJson, {
-      opening: 8,
-      heart: 8,
-      drydown: 8,
-      diffusion: 8,
-      longevity: 8,
-    }),
-    evaluatedFacets: safeParseObject(ev.evaluatedFacetsJson, {}),
-    openingNotes: ev.openingNotes || '',
-    heartNotes: ev.heartNotes || '',
-    drydownNotes: ev.drydownNotes || '',
-    voiceTranscript: ev.voiceTranscript || '',
-    voiceDurationSeconds: ev.voiceDurationSeconds ?? 0,
-    createdAt: ev.createdAt
-      ? ev.createdAt.toISOString().slice(0, 16).replace('T', ' ')
-      : '2026-10-20 10:00',
-  }));
-}
-
-export async function getUserScentMemories(
-  uid: string,
-  materialId?: number | null
-): Promise<ScentMemoryRecord[]> {
-  const mode = getPersistenceMode();
-  if (mode === 'memory') {
-    const store = getOrCreateMemoryUserStore(uid, `${uid}@perfumery.studio`);
-    const list = materialId
-      ? store.scentMemories.filter((m) => m.materialId === materialId)
-      : store.scentMemories;
-    return structuredClone(list);
-  }
-
-  const activeDb = requirePostgresDb();
-  const rows = await activeDb
-    .select()
-    .from(scentMemories)
-    .where(
-      materialId
-        ? and(
-            eq(scentMemories.userUid, uid),
-            eq(scentMemories.materialId, materialId)
-          )
-        : eq(scentMemories.userUid, uid)
-    );
-
-  return rows.map((mem) => ({
-    id: mem.id,
-    materialId: mem.materialId,
-    myPerception: safeParseArray(mem.myPerception),
-    associatedMemories: safeParseArray(mem.associatedMemories),
-    emotions: safeParseArray(mem.emotions),
-    mentalImages: mem.mentalImages || '',
-    places: mem.places || '',
-    colors: mem.colors || '#2E6F40',
-    textures: mem.textures || '',
-    temperature: mem.temperature || 'Neutral',
-    strengthScore: mem.strengthScore ?? 7,
-    familiarityScore: mem.familiarityScore ?? 7,
-    blindConfidenceScore: mem.blindConfidenceScore ?? 7,
-    recognitionTrials: mem.recognitionTrials ?? 1,
-    recognitionCorrect: mem.recognitionCorrect ?? 1,
-    lastReviewedAt: mem.lastReviewedAt
-      ? mem.lastReviewedAt.toISOString().slice(0, 10)
-      : '2026-10-20',
-  }));
 }
 
 export async function toggleUserWorkbenchPin(
@@ -5170,9 +3960,7 @@ export async function toggleUserWorkbenchPin(
       isOnWorkbench: isOnWorkbench ?? true,
     });
   }
-  const nextPin =
-    isOnWorkbench !== undefined ? isOnWorkbench : !existing.isOnWorkbench;
+  const nextPin = isOnWorkbench !== undefined ? isOnWorkbench : !existing.isOnWorkbench;
   return updateUserShelfItem(uid, materialId, { isOnWorkbench: nextPin });
 }
-
 

@@ -12,13 +12,10 @@ import {
 import {
   fetchFullWorkspace,
   fetchBootstrapInfo,
-  getCatalogReadiness,
-  ensureCatalogReadyAtStartup,
   queryCatalogMaterials,
   getCatalogMaterialDetail,
   getCatalogMaterialRegulatoryDossier,
   toggleUserWorkbenchPin,
-  loadStarterOrganForUser,
   createMaterialInDb,
   saveFormulaAndVersionInDb,
   addExperimentEntryInDb,
@@ -32,12 +29,6 @@ import {
   addToUserShelf,
   updateUserShelfItem,
   removeFromUserShelf,
-  getUserFormulas,
-  getUserFormulaById,
-  getUserAccords,
-  getUserExperiments,
-  getUserEvaluations,
-  getUserScentMemories,
 } from './src/db/workspace-repo.ts';
 import {
   formatStandardizedApiError,
@@ -71,7 +62,7 @@ function sendSafeRouteError(
   return res.status(statusCode).json(body);
 }
 
-export async function createAppServer(options?: { enableFrontendMiddleware?: boolean }) {
+async function startServer() {
   const app = express();
   app.disable('x-powered-by');
 
@@ -139,23 +130,7 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
     res.sendFile(path.join(__dirname, 'public', 'sw.js'));
   });
 
-  // 0a. Safe Data & Catalog Health Endpoint (no credentials, hostnames, tokens, or user identifiers)
-  app.get('/api/health/data', async (_req, res) => {
-    try {
-      const health = await getCatalogReadiness();
-      res.json(health);
-    } catch {
-      res.status(503).json({
-        persistenceMode: 'postgres',
-        databaseReady: false,
-        catalogReady: false,
-        catalogCount: 0,
-        catalogVersion: 'v1.1',
-      });
-    }
-  });
-
-  // 0b. Public Zero-Trust Security Posture Verification Endpoint (returns policy metadata, zero user data)
+  // 0. Public Zero-Trust Security Posture Verification Endpoint (returns policy metadata, zero user data)
   app.get('/api/security/audit', (_req, res) => {
     res.json({
       status: 'HARDENED',
@@ -185,7 +160,7 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
     }
   });
 
-  // 2. Bounded Global Catalog Endpoint (supports q/search, family, origin, noteRole, pyramidCode, shelfOnly, workbenchOnly, limit, offset)
+  // 2. Bounded Global Catalog Endpoint (supports search, family, origin, noteRole, pyramidCode, shelfOnly, workbenchOnly, limit, offset)
   app.get('/api/catalog', async (req, res) => {
     try {
       const validated = validateCatalogQuery(
@@ -269,18 +244,6 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
     }
   });
 
-  // Explicit opt-in starter organ loader ("Load Starter Organ")
-  app.post('/api/shelf/starter-organ', requireAuth, async (req: AuthRequest, res) => {
-    try {
-      const uid = req.workspaceUid!;
-      assertStrictTenantPayload(req.body || {}, uid);
-      const result = await loadStarterOrganForUser(uid);
-      res.json(result);
-    } catch (error: unknown) {
-      sendSafeRouteError(res, error, 'Failed to load starter organ');
-    }
-  });
-
   app.post('/api/shelf', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
@@ -291,7 +254,8 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       );
       const validated = validateShelfMutationPayload(req.body || {});
       const item = await addToUserShelf(uid, materialId, validated);
-      res.json({ item });
+      const shelf = await getUserShelf(uid);
+      res.json({ item, shelf });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
     }
@@ -310,7 +274,11 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await addToUserShelf(uid, materialId, validated);
-        res.json({ item });
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ item, shelf: workspace.userShelf, workspace });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to add material to My Shelf');
       }
@@ -330,7 +298,11 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
         );
         const validated = validateShelfMutationPayload(req.body || {});
         const item = await updateUserShelfItem(uid, materialId, validated);
-        res.json({ item });
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ item, shelf: workspace.userShelf, workspace });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update My Shelf item');
       }
@@ -357,7 +329,8 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
           materialId,
           isOnWorkbench
         );
-        res.json({ item });
+        const shelf = await getUserShelf(uid);
+        res.json({ item, shelf });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to update Workbench pin');
       }
@@ -375,7 +348,11 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
           'materialId'
         );
         const result = await removeFromUserShelf(uid, materialId);
-        res.json(result);
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json({ ...result, shelf: workspace.userShelf, workspace });
       } catch (error: unknown) {
         sendSafeRouteError(
           res,
@@ -392,11 +369,15 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateCreateMaterialPayload(req.body);
-      const material = await createMaterialInDb(
+      await createMaterialInDb(
         uid,
         validated as Parameters<typeof createMaterialInDb>[1]
       );
-      res.json({ material });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to create material');
     }
@@ -406,8 +387,8 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
   app.get('/api/formulas', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const formulasList = await getUserFormulas(uid);
-      res.json({ formulas: formulasList, total: formulasList.length });
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ formulas: ws.formulas, total: ws.formulas.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load formulas');
     }
@@ -423,7 +404,11 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
           req.params.formulaId,
           'formulaId'
         );
-        const formula = await getUserFormulaById(uid, formulaId);
+        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+        const formula = ws.formulas.find((f) => f.id === formulaId);
+        if (!formula) {
+          throw new Error(`NotFound: Formula #${formulaId} not found.`);
+        }
         res.json({ formula });
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to load formula');
@@ -441,7 +426,11 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
           req.params.formulaId,
           'formulaId'
         );
-        const formula = await getUserFormulaById(uid, formulaId);
+        const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+        const formula = ws.formulas.find((f) => f.id === formulaId);
+        if (!formula) {
+          throw new Error(`NotFound: Formula #${formulaId} not found.`);
+        }
         res.json({
           formulaId: formula.id,
           activeVersionLabel: formula.activeVersionLabel,
@@ -463,20 +452,16 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const { formula, version } = validateSaveFormulaPayload(req.body);
       assertStrictTenantPayload(formula, uid);
       assertStrictTenantPayload(version, uid);
-      const saved = await saveFormulaAndVersionInDb(
+      await saveFormulaAndVersionInDb(
         uid,
         formula as Parameters<typeof saveFormulaAndVersionInDb>[1],
         version as Parameters<typeof saveFormulaAndVersionInDb>[2]
       );
-      const hydratedFormula = await getUserFormulaById(uid, saved.formulaId);
-      const hydratedVersion =
-        hydratedFormula.versions.find((v) => v.id === saved.formulaVersionId) ||
-        hydratedFormula.versions[hydratedFormula.versions.length - 1] ||
-        null;
-      res.json({
-        formula: hydratedFormula,
-        version: hydratedVersion,
-      });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save formula version');
     }
@@ -489,10 +474,13 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
   app.get('/api/experiments', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
         : null;
-      const items = await getUserExperiments(uid, formulaIdParam);
+      const items = formulaIdParam
+        ? ws.experiments.filter((e) => e.formulaId === formulaIdParam)
+        : ws.experiments;
       res.json({ experiments: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load experiments');
@@ -504,11 +492,15 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateExperimentPayload(req.body);
-      const experiment = await addExperimentEntryInDb(
+      await addExperimentEntryInDb(
         uid,
         validated as Parameters<typeof addExperimentEntryInDb>[1]
       );
-      res.json({ experiment });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to add experiment entry');
     }
@@ -518,10 +510,13 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
   app.get('/api/evaluations', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const formulaIdParam = req.query.formulaId
         ? validatePositiveIntId(req.query.formulaId, 'formulaId')
         : null;
-      const items = await getUserEvaluations(uid, formulaIdParam);
+      const items = formulaIdParam
+        ? ws.evaluations.filter((e) => e.formulaId === formulaIdParam)
+        : ws.evaluations;
       res.json({ evaluations: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load evaluations');
@@ -533,11 +528,15 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateEvaluationPayload(req.body);
-      const evaluation = await addEvaluationInDb(
+      await addEvaluationInDb(
         uid,
         validated as Parameters<typeof addEvaluationInDb>[1]
       );
-      res.json({ evaluation });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save sensory evaluation');
     }
@@ -547,10 +546,13 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
   app.get('/api/memories', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
       const materialIdParam = req.query.materialId
         ? validatePositiveIntId(req.query.materialId, 'materialId')
         : null;
-      const items = await getUserScentMemories(uid, materialIdParam);
+      const items = materialIdParam
+        ? ws.scentMemories.filter((m) => m.materialId === materialIdParam)
+        : ws.scentMemories;
       res.json({ scentMemories: items, total: items.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load scent memories');
@@ -562,11 +564,15 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateScentMemoryPayload(req.body);
-      const memory = await upsertScentMemoryInDb(
+      await upsertScentMemoryInDb(
         uid,
         validated as Parameters<typeof upsertScentMemoryInDb>[1]
       );
-      res.json({ memory });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update scent memory');
     }
@@ -576,8 +582,8 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
   app.get('/api/accords', requireAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.workspaceUid!;
-      const accordsList = await getUserAccords(uid);
-      res.json({ accords: accordsList, total: accordsList.length });
+      const ws = await fetchFullWorkspace(uid, req.workspaceEmail || '');
+      res.json({ accords: ws.accords, total: ws.accords.length });
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to load accords');
     }
@@ -588,11 +594,15 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
       const validated = validateAccordPayload(req.body);
-      const accord = await createAccordInDb(
+      await createAccordInDb(
         uid,
         validated as Parameters<typeof createAccordInDb>[1]
       );
-      res.json({ accord });
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to save accord');
     }
@@ -610,12 +620,16 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
           'accordId'
         );
         const validated = validateAccordPayload(req.body);
-        const accord = await updateAccordAndCreateVersion(
+        await updateAccordAndCreateVersion(
           uid,
           accordId,
           validated as Parameters<typeof updateAccordAndCreateVersion>[2]
         );
-        res.json({ accord });
+        const workspace = await fetchFullWorkspace(
+          uid,
+          req.workspaceEmail || ''
+        );
+        res.json(workspace);
       } catch (error: unknown) {
         sendSafeRouteError(res, error, 'Failed to create accord version');
       }
@@ -627,8 +641,12 @@ export async function createAppServer(options?: { enableFrontendMiddleware?: boo
     try {
       const uid = req.workspaceUid!;
       assertStrictTenantPayload(req.body, uid);
-      const settings = await updateUserSettingsInDb(uid, req.body);
-      res.json({ settings });
+      await updateUserSettingsInDb(uid, req.body);
+      const workspace = await fetchFullWorkspace(
+        uid,
+        req.workspaceEmail || ''
+      );
+      res.json(workspace);
     } catch (error: unknown) {
       sendSafeRouteError(res, error, 'Failed to update settings');
     }
@@ -939,36 +957,24 @@ Student Request: ${userPrompt}`;
     }
   });
 
-  if (options?.enableFrontendMiddleware !== false) {
-    if (process.env.NODE_ENV !== 'production') {
-      const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: false, ws: false },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    } else {
-      const distPath = path.join(__dirname, 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (_req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-    }
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true, hmr: false, ws: false },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(__dirname, 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
-  return app;
-}
-
-async function startServer() {
-  await ensureCatalogReadyAtStartup();
-  const app = await createAppServer({ enableFrontendMiddleware: true });
   const PORT = 3000;
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Perfumery Formulation Platform listening on http://localhost:${PORT}`);
   });
 }
 
-if (!process.env.NODE_TEST_CONTEXT) {
-  startServer();
-}
-
-
+startServer();
