@@ -587,7 +587,7 @@ export const OlfactoryPyramidView: React.FC<OlfactoryPyramidViewProps> = ({
     ctx.fillStyle = '#94A3B8';
     ctx.font = '400 22px sans-serif';
     ctx.fillText(
-      `Product: ${activeFormula?.intendedProduct || 'Fine Fragrance'} · IFRA: ${activeFormula?.ifraCategory || 'Category 4'} · Total Batch Weight: ${formulaTierBreakdown.totalWeight.toFixed(2)} g`,
+      `Product: ${activeFormula?.intendedProduct || 'Not specified'} · IFRA category: ${activeFormula?.ifraCategory || 'Not specified'} · Total Batch Weight: ${formulaTierBreakdown.totalWeight.toFixed(2)} g`,
       84,
       198
     );

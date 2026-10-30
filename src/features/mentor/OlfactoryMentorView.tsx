@@ -44,7 +44,7 @@ interface GenericMentorMessage {
 const GENERIC_PROMPTS = [
   'How do I build a classic Bergamot–Hedione–Iso E Super radiative backbone?',
   'What is the difference between Top-Heart (TH) and Heart-Base (HB) bridge notes?',
-  'How are IFRA Category 4 limits calculated from concentrate vs. finished product %?',
+  'How are IFRA category limits calculated from fragrance concentrate vs. finished product %?',
   'Which materials on My Shelf work best as a clean musky fixative?',
 ];
 
@@ -142,7 +142,7 @@ export const OlfactoryMentorView: React.FC<OlfactoryMentorViewProps> = ({
           `### Generic Perfumery Guidance\n\n` +
           `- **Query**: "${query}"\n` +
           `- **Volatility & Bridge Architecture**: Balance Top (15–25%), Top-Heart / Heart (30–45%), and Heart-Base / Base (35–50%) so evaporation transitions smoothly without a hollow mid-stage.\n` +
-          `- **Regulatory Guardrail**: IFRA Category 4 limits always apply to the **finished consumer product percentage** (e.g., at 20% EdP concentration, 10% in fragrance concentrate equals 2.0% in the finished product). Unlisted materials must be treated as \`LOOKUP_REQUIRED\`.\n` +
+          `- **Regulatory Guardrail**: IFRA limits for the selected IFRA category always apply to the **finished consumer product percentage** (multiply active material % in the fragrance concentrate by the finished-product concentration %). Unlisted materials or missing category context must be treated as \`LOOKUP_REQUIRED\` / \`INDETERMINATE\`.\n` +
           `- **Shelf Context**: You currently have **${materials.length}** materials on My Shelf and **${accords.length}** accords available. Create a formula in Formula Lab to run live ingredient-level diagnostics.`;
       }
 

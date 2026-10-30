@@ -358,7 +358,7 @@ export default function App() {
   const [formulasLoadState, setFormulasLoadState] = useState<LoadState>('idle');
   const [accordsLoadState, setAccordsLoadState] = useState<LoadState>('idle');
 
-  // Workspace Data State (no runtime SEED_* fallback; hydrated from focused APIs or user-created session storage)
+  // Workspace Data State (hydrated from focused APIs or user-created session storage)
   const [materials, setMaterials] = useState<RawMaterial[]>(() => {
     try {
       const raw = localStorage.getItem('osmolab_stage2_shelf_materials');
@@ -1279,6 +1279,26 @@ export default function App() {
         const updatedFormula: Formula = {
           ...target,
           ...formulaPayload,
+          intendedProduct:
+            formulaPayload.intendedProduct !== undefined
+              ? formulaPayload.intendedProduct
+              : target.intendedProduct,
+          ifraCategory:
+            formulaPayload.ifraCategory !== undefined
+              ? formulaPayload.ifraCategory
+              : target.ifraCategory,
+          finalProductConcentration:
+            formulaPayload.finalProductConcentration !== undefined
+              ? formulaPayload.finalProductConcentration
+              : target.finalProductConcentration,
+          targetFamilies:
+            formulaPayload.targetFamilies !== undefined
+              ? formulaPayload.targetFamilies
+              : target.targetFamilies,
+          targetFacets:
+            formulaPayload.targetFacets !== undefined
+              ? formulaPayload.targetFacets
+              : target.targetFacets,
           activeVersionLabel: versionPayload.versionLabel,
           versions: nextVersions,
           updatedAt: new Date().toISOString().slice(0, 10),
@@ -1287,32 +1307,47 @@ export default function App() {
         copy[existingIdx] = updatedFormula;
         return copy;
       } else {
+        const trimmedName = (formulaPayload.name || '').trim();
+        const trimmedProduct = (formulaPayload.intendedProduct || '').trim();
+        const trimmedCategory = (formulaPayload.ifraCategory || '').trim();
+        const parsedConc = formulaPayload.finalProductConcentration;
+        if (
+          !trimmedName ||
+          !trimmedProduct ||
+          !trimmedCategory ||
+          typeof parsedConc !== 'number' ||
+          !Number.isFinite(parsedConc) ||
+          parsedConc <= 0 ||
+          parsedConc > 100
+        ) {
+          return prev;
+        }
         const newId = Date.now();
         const created: Formula = {
           id: newId,
           projectId: 1,
-          projectName: formulaPayload.projectName || 'Personal Study',
-          name: formulaPayload.name,
+          projectName: formulaPayload.projectName ?? '',
+          name: trimmedName,
           status: formulaPayload.status || 'Draft',
-          description: formulaPayload.description || '',
-          intendedProduct: formulaPayload.intendedProduct || 'Eau de Parfum (20% conc.)',
-          ifraCategory: formulaPayload.ifraCategory || 'Category 4 (Fine Fragrance)',
-          finalProductConcentration: formulaPayload.finalProductConcentration ?? 20,
-          targetBrief: formulaPayload.targetBrief || '',
-          targetFamilies: formulaPayload.targetFamilies || ['Green'],
-          targetFacets: formulaPayload.targetFacets || { Green: 7 },
-          targetIntensity: 7,
-          targetTexture: '',
-          targetAtmosphere: '',
-          targetTemperature: 'Cool',
-          targetColor: '#2E6F40',
-          targetMood: '',
-          targetDiffusion: 7,
-          targetEvolution: '',
-          targetDrydown: '',
-          materialsToAvoid: [],
-          isFavorite: false,
-          tags: ['New-Study'],
+          description: formulaPayload.description ?? '',
+          intendedProduct: trimmedProduct,
+          ifraCategory: trimmedCategory,
+          finalProductConcentration: parsedConc,
+          targetBrief: formulaPayload.targetBrief ?? '',
+          targetFamilies: formulaPayload.targetFamilies ?? [],
+          targetFacets: formulaPayload.targetFacets ?? {},
+          targetIntensity: formulaPayload.targetIntensity ?? 0,
+          targetTexture: formulaPayload.targetTexture ?? '',
+          targetAtmosphere: formulaPayload.targetAtmosphere ?? '',
+          targetTemperature: formulaPayload.targetTemperature ?? 'Neutral',
+          targetColor: formulaPayload.targetColor ?? '',
+          targetMood: formulaPayload.targetMood ?? '',
+          targetDiffusion: formulaPayload.targetDiffusion ?? 0,
+          targetEvolution: formulaPayload.targetEvolution ?? '',
+          targetDrydown: formulaPayload.targetDrydown ?? '',
+          materialsToAvoid: formulaPayload.materialsToAvoid ?? [],
+          isFavorite: Boolean(formulaPayload.isFavorite),
+          tags: formulaPayload.tags ?? [],
           activeVersionLabel: versionPayload.versionLabel,
           versions: [
             {
@@ -2334,75 +2369,19 @@ export default function App() {
               onUpdateAccord={handleUpdateAccord}
               onDeleteAccord={handleDeleteAccord}
               onInsertAccordIntoActiveFormula={(accord, dosageGrams = 10, targetFormulaId, newFormulaName) => {
-                let target = targetFormulaId ? formulas.find((f) => f.id === targetFormulaId) : null;
-                if (!target && newFormulaName) {
-                  const newId = Date.now();
-                  const created: Formula = {
-                    id: newId,
-                    projectId: 1,
-                    projectName: 'Accord Study',
-                    name: newFormulaName.trim(),
-                    status: 'Draft',
-                    description: `Formula developed around ${accord.name}`,
-                    intendedProduct: 'Eau de Parfum (20% conc.)',
-                    ifraCategory: 'Category 4 (Fine Fragrance)',
-                    finalProductConcentration: 20,
-                    targetBrief: `Formulation featuring ${accord.name}`,
-                    targetFamilies: [accord.category || 'Floral'],
-                    targetFacets: { [accord.category || 'Floral']: 7 },
-                    targetIntensity: 7,
-                    targetTexture: '',
-                    targetAtmosphere: '',
-                    targetTemperature: 'Warm',
-                    targetColor: '#C49A45',
-                    targetMood: '',
-                    targetDiffusion: 7,
-                    targetEvolution: '',
-                    targetDrydown: '',
-                    materialsToAvoid: [],
-                    isFavorite: false,
-                    tags: ['Accord-Study'],
-                    activeVersionLabel: 'V1',
-                    versions: [
-                      {
-                        id: Date.now() + 1,
-                        formulaId: newId,
-                        versionLabel: 'V1',
-                        parentVersionId: null,
-                        status: 'Draft',
-                        versionNotes: `Initial formula iteration with ${accord.name} (${dosageGrams}g)`,
-                        maturationDays: 14,
-                        items: [
-                          {
-                            id: `acc-${Date.now()}`,
-                            type: 'accord',
-                            accordId: accord.id,
-                            name: accord.name,
-                            quantityGrams: dosageGrams,
-                            percentage: 100,
-                            dilutionPercent: 100,
-                            solvent: 'Neat',
-                            activeMaterialPercent: dosageGrams,
-                            supplier: 'In-House Accord',
-                            costPerGram: 0.45,
-                            notes: `Foundation accord (${accord.items.length} notes)`,
-                          },
-                        ],
-                        createdAt: new Date().toISOString().slice(0, 10),
-                      },
-                    ],
-                    createdAt: new Date().toISOString().slice(0, 10),
-                    updatedAt: new Date().toISOString().slice(0, 10),
-                  };
-                  setFormulas((prev) => [created, ...prev]);
-                  setActiveFormulaId(newId);
-                  setActiveVersionLabel('V1');
+                const target = targetFormulaId
+                  ? formulas.find((f) => f.id === targetFormulaId) ?? null
+                  : null;
+                if (newFormulaName || (!target && !activeFormula)) {
                   setActiveNav('formula-lab');
                   return;
                 }
 
                 const resolvedTarget = target || activeFormula;
-                if (!resolvedTarget) return;
+                if (!resolvedTarget) {
+                  setActiveNav('formula-lab');
+                  return;
+                }
                 const currentVer =
                   resolvedTarget.versions.find(
                     (v) => v.versionLabel === resolvedTarget.activeVersionLabel
@@ -2441,75 +2420,19 @@ export default function App() {
                 setActiveNav('formula-lab');
               }}
               onInsertMaterialIntoFormula={(material, dosageGrams, dilutionPercent, targetFormulaId, newFormulaName) => {
-                let target = targetFormulaId ? formulas.find((f) => f.id === targetFormulaId) : null;
-                if (!target && newFormulaName) {
-                  const newId = Date.now();
-                  const created: Formula = {
-                    id: newId,
-                    projectId: 1,
-                    projectName: 'Single-Note Study',
-                    name: newFormulaName.trim(),
-                    status: 'Draft',
-                    description: `Formula starting with ${material.name}`,
-                    intendedProduct: 'Eau de Parfum (20% conc.)',
-                    ifraCategory: 'Category 4 (Fine Fragrance)',
-                    finalProductConcentration: 20,
-                    targetBrief: `Formulation exploring ${material.name}`,
-                    targetFamilies: [material.primaryFamily],
-                    targetFacets: { [material.primaryFamily]: 7 },
-                    targetIntensity: 7,
-                    targetTexture: '',
-                    targetAtmosphere: '',
-                    targetTemperature: 'Cool',
-                    targetColor: '#10B981',
-                    targetMood: '',
-                    targetDiffusion: 7,
-                    targetEvolution: '',
-                    targetDrydown: '',
-                    materialsToAvoid: [],
-                    isFavorite: false,
-                    tags: ['Palette-Study'],
-                    activeVersionLabel: 'V1',
-                    versions: [
-                      {
-                        id: Date.now() + 1,
-                        formulaId: newId,
-                        versionLabel: 'V1',
-                        parentVersionId: null,
-                        status: 'Draft',
-                        versionNotes: `Initial formula iteration with ${material.name} (${dosageGrams}g @ ${dilutionPercent}%)`,
-                        maturationDays: 14,
-                        items: [
-                          {
-                            id: `mat-${Date.now()}`,
-                            type: 'material',
-                            materialId: material.id,
-                            name: material.name,
-                            quantityGrams: dosageGrams,
-                            percentage: 100,
-                            dilutionPercent: dilutionPercent,
-                            solvent: dilutionPercent < 100 ? 'DPG' : 'Neat',
-                            activeMaterialPercent: dosageGrams * (dilutionPercent / 100),
-                            supplier: material.supplier || 'Standard',
-                            costPerGram: material.costPerGram ?? 0.35,
-                            notes: `${material.volatility} note (${material.primaryFamily})`,
-                          },
-                        ],
-                        createdAt: new Date().toISOString().slice(0, 10),
-                      },
-                    ],
-                    createdAt: new Date().toISOString().slice(0, 10),
-                    updatedAt: new Date().toISOString().slice(0, 10),
-                  };
-                  setFormulas((prev) => [created, ...prev]);
-                  setActiveFormulaId(newId);
-                  setActiveVersionLabel('V1');
+                const target = targetFormulaId
+                  ? formulas.find((f) => f.id === targetFormulaId) ?? null
+                  : null;
+                if (newFormulaName || (!target && !activeFormula)) {
                   setActiveNav('formula-lab');
                   return;
                 }
 
                 const resolvedTarget = target || activeFormula;
-                if (!resolvedTarget) return;
+                if (!resolvedTarget) {
+                  setActiveNav('formula-lab');
+                  return;
+                }
                 const currentVer =
                   resolvedTarget.versions.find(
                     (v) => v.versionLabel === resolvedTarget.activeVersionLabel

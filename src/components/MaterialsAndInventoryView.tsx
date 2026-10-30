@@ -10,7 +10,7 @@ import {
   ScentMemoryRecord,
   VolatilityTier,
 } from '../domain/types';
-import { OLFACTORY_WHEEL_FAMILIES } from '../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../domain/olfactory-wheel-families';
 import { LoadState } from '../api/client';
 import { normalizeMaterialSynonyms } from '../domain/navigation-state';
 import { PyramidStepIcon, getVolatilityBadgeConfig } from './PyramidStepIcon';
@@ -385,6 +385,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
 
     const handleConfirm = (e: React.FormEvent) => {
       e.preventDefault();
+      const isCreatingNew =
+        targetFormulaModal.selectedFormulaId === 'new' || !targetFormula;
       if (isAccord && targetFormulaModal.accord) {
         onInsertAccordIntoActiveFormula(
           targetFormulaModal.accord,
@@ -392,16 +394,12 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
           typeof targetFormulaModal.selectedFormulaId === 'number'
             ? targetFormulaModal.selectedFormulaId
             : undefined,
-          targetFormulaModal.selectedFormulaId === 'new'
-            ? targetFormulaModal.newFormulaName
-            : undefined
+          undefined
         );
         setToastMsg(
-          `Added ${targetFormulaModal.dosageGrams}g of ${itemName} to ${
-            targetFormulaModal.selectedFormulaId === 'new'
-              ? targetFormulaModal.newFormulaName
-              : targetFormula?.name || 'formula'
-          }`
+          isCreatingNew
+            ? 'Opened Formula Lab — create a formula with explicit product, IFRA category, and concentration first'
+            : `Added ${targetFormulaModal.dosageGrams}g of ${itemName} to ${targetFormula.name}`
         );
       } else if (!isAccord && targetFormulaModal.material && onInsertMaterialIntoFormula) {
         onInsertMaterialIntoFormula(
@@ -411,16 +409,12 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
           typeof targetFormulaModal.selectedFormulaId === 'number'
             ? targetFormulaModal.selectedFormulaId
             : undefined,
-          targetFormulaModal.selectedFormulaId === 'new'
-            ? targetFormulaModal.newFormulaName
-            : undefined
+          undefined
         );
         setToastMsg(
-          `Added ${targetFormulaModal.dosageGrams}g of ${itemName} to ${
-            targetFormulaModal.selectedFormulaId === 'new'
-              ? targetFormulaModal.newFormulaName
-              : targetFormula?.name || 'formula'
-          }`
+          isCreatingNew
+            ? 'Opened Formula Lab — create a formula with explicit product, IFRA category, and concentration first'
+            : `Added ${targetFormulaModal.dosageGrams}g of ${itemName} to ${targetFormula.name}`
         );
       }
       setTargetFormulaModal(null);
@@ -554,22 +548,15 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 </div>
               </div>
 
-              {/* New Formula Name input (only when 'new' is chosen) */}
+              {/* Notice when 'new' is chosen */}
               {targetFormulaModal.selectedFormulaId === 'new' && (
-                <div className="p-3 rounded-lg bg-[#0B0E14] border border-emerald-900/50 space-y-2">
-                  <label className="block text-slate-300 font-medium">New Formula Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={targetFormulaModal.newFormulaName}
-                    onChange={(e) =>
-                      setTargetFormulaModal((prev) =>
-                        prev ? { ...prev, newFormulaName: e.target.value } : null
-                      )
-                    }
-                    placeholder="e.g. Amber Rose Study V1"
-                    className="w-full bg-[#111621] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  />
+                <div className="p-3 rounded-lg bg-[#0B0E14] border border-emerald-900/50 space-y-1.5 text-slate-300">
+                  <div className="font-medium text-emerald-300">
+                    Formula Creation Requires Regulatory Context
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Continuing will open Formula Lab where you can specify the Formula Name, Intended Product, IFRA Category, and Finished-Product Concentration (%) before adding ingredients.
+                  </p>
                 </div>
               )}
 
@@ -932,7 +919,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             ) : (
               <div className="space-y-2">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  Regulatory Brief Check (IFRA 51st & EU Cosmetics Regulation)
+                  Regulatory Brief Check (IFRA &amp; EU Cosmetics Compliance)
                 </span>
                 <DualRegulatorySlider
                   materialName={mat.name}
@@ -3179,7 +3166,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate">Regulatory Compliance (IFRA 51)</span>
+                <span className="truncate">Regulatory Compliance</span>
               </button>
               <button
                 type="button"
@@ -3498,7 +3485,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </span>
                     {selectedLimit?.maxAllowedPercent !== null && selectedLimit?.maxAllowedPercent !== undefined ? (
                       <span className="text-emerald-400 font-mono-tabular font-medium">
-                        Cat 4 Finished Product Limit: {selectedLimit.maxAllowedPercent}%
+                        {selectedLimit.ifraCategory || 'Stored IFRA'} Finished Product Limit: {selectedLimit.maxAllowedPercent}%
                       </span>
                     ) : (
                       <span
@@ -3569,7 +3556,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                     </div>
 
                     <div className="text-left xl:text-right text-xs font-mono-tabular text-slate-300 shrink-0">
-                      <div>IFRA Cat 4 (Finished Consumer Product %):</div>
+                      <div>{selectedLimit?.ifraCategory ? `IFRA (${selectedLimit.ifraCategory})` : 'IFRA Limit'} (Finished Consumer Product %):</div>
                       <div className="text-lg font-bold text-emerald-400 mt-0.5">
                         {selectedLimit && selectedLimit.maxAllowedPercent !== null ? (
                           `${selectedLimit.maxAllowedPercent.toFixed(2)}%`

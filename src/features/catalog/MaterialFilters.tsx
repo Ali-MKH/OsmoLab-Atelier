@@ -1,6 +1,6 @@
 import React from 'react';
 import { Filter, Layers, Search, X } from 'lucide-react';
-import { OLFACTORY_WHEEL_FAMILIES } from '../../domain/seed-data';
+import { OLFACTORY_WHEEL_FAMILIES } from '../../domain/olfactory-wheel-families';
 import type { PyramidUiCode } from '../../domain/types';
 
 export interface MaterialFiltersProps {

@@ -32,6 +32,7 @@ import {
   autoCapMaterialToIfraLimit,
   IFRA_CATEGORY_OPTIONS,
   MaterialSafetyEvaluation,
+  FormulaSafetyReport,
 } from '../domain/safety-engine';
 import {
   CurrencyCode,
@@ -137,8 +138,12 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const [librarySearch, setLibrarySearch] = useState('');
   const [showNewFormulaModal, setShowNewFormulaModal] = useState(false);
   const [newFormulaName, setNewFormulaName] = useState('');
-  const [newFormulaProject, setNewFormulaProject] = useState('Personal Study');
+  const [newFormulaProject, setNewFormulaProject] = useState('');
+  const [newFormulaIntendedProduct, setNewFormulaIntendedProduct] = useState('');
+  const [newFormulaIfraCategory, setNewFormulaIfraCategory] = useState('');
+  const [newFormulaFinalConc, setNewFormulaFinalConc] = useState('');
   const [newFormulaBrief, setNewFormulaBrief] = useState('');
+  const [newFormulaError, setNewFormulaError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -249,11 +254,14 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const [formulaStatus, setFormulaStatus] = useState<FormulaStatus>(
     activeFormula?.status || 'Draft'
   );
-  const [finalConc, setFinalConc] = useState<number>(
-    activeFormula?.finalProductConcentration || 20
+  const [finalConc, setFinalConc] = useState<number | null>(
+    typeof activeFormula?.finalProductConcentration === 'number' &&
+      activeFormula.finalProductConcentration > 0
+      ? activeFormula.finalProductConcentration
+      : null
   );
   const [selectedIfraCategory, setSelectedIfraCategory] = useState<string>(
-    activeFormula?.ifraCategory || 'Category 4 (Fine Fragrance)'
+    activeFormula?.ifraCategory || ''
   );
   const [localRegulatoryLimits, setLocalRegulatoryLimits] =
     useState<MaterialRegulatoryLimit[]>(regulatoryLimits);
@@ -263,10 +271,10 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   );
   const [limitOverrideMaxPct, setLimitOverrideMaxPct] = useState<string>('0.50');
   const [limitOverrideSource, setLimitOverrideSource] = useState<string>(
-    'Imported IFRA 51st Amendment Dossier Override'
+    'User-Entered Regulatory Dossier Override'
   );
   const [workingTargetFacets, setWorkingTargetFacets] = useState<Record<string, number>>(
-    activeFormula?.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
+    activeFormula?.targetFacets || {}
   );
   const [includeAllCoreFacets, setIncludeAllCoreFacets] = useState<boolean>(false);
   const [lastSyncedFormulaId, setLastSyncedFormulaId] = useState<number | null>(
@@ -280,13 +288,14 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     setBriefTexture(activeFormula?.targetTexture || '');
     setBriefDrydown(activeFormula?.targetDrydown || '');
     setFormulaStatus(activeFormula?.status || 'Draft');
-    setFinalConc(activeFormula?.finalProductConcentration || 20);
-    setSelectedIfraCategory(
-      activeFormula?.ifraCategory || 'Category 4 (Fine Fragrance)'
+    setFinalConc(
+      typeof activeFormula?.finalProductConcentration === 'number' &&
+        activeFormula.finalProductConcentration > 0
+        ? activeFormula.finalProductConcentration
+        : null
     );
-    setWorkingTargetFacets(
-      activeFormula?.targetFacets || { Green: 7, Woody: 6, Citrus: 5, Musky: 5 }
-    );
+    setSelectedIfraCategory(activeFormula?.ifraCategory || '');
+    setWorkingTargetFacets(activeFormula?.targetFacets || {});
   }
 
   const radarComparison = useMemo(
@@ -335,13 +344,20 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   const activeUnitLabel =
     activeMassUnit === 'oz' ? 'oz' : activeMassUnit === 'ml' ? 'mL' : 'g';
 
+  const hasValidSafetyContext = Boolean(
+    selectedIfraCategory.trim() &&
+      finalConc !== null &&
+      Number.isFinite(finalConc) &&
+      finalConc > 0
+  );
+
   const realTimeCostSummary = useMemo(
     () =>
       calculateRealTimeBatchCost({
         items: displayItems,
         materials,
         targetBatchGrams: effectiveBatchWeightGrams,
-        finalProductConcentrationPercent: finalConc,
+        finalProductConcentrationPercent: finalConc ?? 0,
         carrierCostPerGramUsd,
         bottleSizeMl,
       }),
@@ -372,27 +388,54 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     return Array.from(map.values());
   }, [regulatoryLimits, localRegulatoryLimits]);
 
-  const safetyReport = useMemo(
-    () =>
-      evaluateFormulaSafety(
-        workingItems,
-        accords,
-        effectiveRegulatoryLimits,
-        selectedIfraCategory,
-        finalConc,
-        {
-          intendedProduct: activeFormula?.intendedProduct || 'Eau de Parfum (20% conc.)',
-        }
-      ),
-    [
+  const safetyReport = useMemo<FormulaSafetyReport>(() => {
+    if (!hasValidSafetyContext || finalConc === null) {
+      return {
+        ifraCategory: selectedIfraCategory || '',
+        normalizedCategoryCode: null,
+        intendedProduct: activeFormula?.intendedProduct || '',
+        exposureType: 'AMBIGUOUS',
+        finalProductConcentrationPercent: finalConc ?? 0,
+        evaluations: [],
+        byLineId: {},
+        complianceState: 'INDETERMINATE',
+        ifraComplianceState: 'INDETERMINATE',
+        euComplianceState: 'INDETERMINATE',
+        overallCompliant: false,
+        violationCount: 0,
+        missingDataCount: workingItems.length,
+        hasMissingData: true,
+        cumulativeMultiSourceCount: 0,
+        safetyRiskEvaluations: [],
+        indeterminateCount: workingItems.length,
+        demoOrUnverifiedCount: 0,
+        disclaimer:
+          'Regulatory context incomplete — select an IFRA Category and provide Finished-Product Concentration (%) to evaluate formula compliance.',
+        euOverallCompliant: false,
+        euViolationCount: 0,
+        euAllergenDeclarationCount: 0,
+        aggregatedAllergens: [],
+      };
+    }
+    return evaluateFormulaSafety(
       workingItems,
       accords,
       effectiveRegulatoryLimits,
       selectedIfraCategory,
       finalConc,
-      activeFormula?.intendedProduct,
-    ]
-  );
+      {
+        intendedProduct: activeFormula?.intendedProduct || '',
+      }
+    );
+  }, [
+    hasValidSafetyContext,
+    workingItems,
+    accords,
+    effectiveRegulatoryLimits,
+    selectedIfraCategory,
+    finalConc,
+    activeFormula?.intendedProduct,
+  ]);
 
   const safetyByMaterialId = useMemo(() => {
     const map = new Map<number, MaterialSafetyEvaluation>();
@@ -403,6 +446,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
   }, [safetyReport]);
 
   const handleAutoCapMaterial = (materialId: number) => {
+    if (!hasValidSafetyContext || finalConc === null) return;
     setWorkingItems((prev) =>
       autoCapMaterialToIfraLimit(
         prev,
@@ -623,7 +667,9 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
       {
         ...activeFormula,
         status: formulaStatus,
-        finalProductConcentration: finalConc,
+        ifraCategory: selectedIfraCategory,
+        finalProductConcentration:
+          finalConc !== null ? finalConc : activeFormula.finalProductConcentration,
         targetBrief: briefText,
         targetAtmosphere: briefAtmosphere,
         targetTexture: briefTexture,
@@ -650,18 +696,36 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
 
   const handleCreateNewFormula = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFormulaName.trim()) return;
+    const trimmedName = newFormulaName.trim();
+    const trimmedProduct = newFormulaIntendedProduct.trim();
+    const trimmedCategory = newFormulaIfraCategory.trim();
+    const parsedConc = Number(newFormulaFinalConc);
+    if (
+      !trimmedName ||
+      !trimmedProduct ||
+      !trimmedCategory ||
+      newFormulaFinalConc.trim() === '' ||
+      !Number.isFinite(parsedConc) ||
+      parsedConc <= 0 ||
+      parsedConc > 100
+    ) {
+      setNewFormulaError(
+        'Formula Name, Intended Product, IFRA Category, and a valid Finished-Product Concentration (0–100%) are required.'
+      );
+      return;
+    }
+    setNewFormulaError(null);
     await onSaveFormulaVersion(
       {
-        name: newFormulaName.trim(),
-        projectName: newFormulaProject.trim() || 'Personal Study',
+        name: trimmedName,
+        projectName: newFormulaProject.trim(),
         status: 'Draft',
-        intendedProduct: 'Eau de Parfum (20% conc.)',
-        ifraCategory: 'Category 4 (Fine Fragrance)',
-        finalProductConcentration: 20,
+        intendedProduct: trimmedProduct,
+        ifraCategory: trimmedCategory,
+        finalProductConcentration: parsedConc,
         targetBrief: newFormulaBrief.trim(),
-        targetFamilies: ['Green', 'Woody'],
-        targetFacets: { Green: 7, Woody: 6, Citrus: 5, Musky: 5 },
+        targetFamilies: [],
+        targetFacets: {},
       },
       {
         versionLabel: 'V1',
@@ -674,8 +738,188 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
     );
     setShowNewFormulaModal(false);
     setNewFormulaName('');
+    setNewFormulaProject('');
+    setNewFormulaIntendedProduct('');
+    setNewFormulaIfraCategory('');
+    setNewFormulaFinalConc('');
     setNewFormulaBrief('');
   };
+
+  const renderNewFormulaModal = () => (
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs overflow-y-auto"
+      onClick={() => {
+        setShowNewFormulaModal(false);
+        setNewFormulaError(null);
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-formula-title"
+    >
+      <form
+        noValidate
+        onSubmit={handleCreateNewFormula}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-xl bg-[#111621] border border-slate-700 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden text-xs my-auto"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0 sticky top-0 bg-[#111621] z-10">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
+              Formula Workspace
+            </span>
+            <h3 id="create-formula-title" className="text-base font-semibold text-white">
+              Create New Fragrance Formula
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowNewFormulaModal(false);
+              setNewFormulaError(null);
+            }}
+            aria-label="Close"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 overscroll-contain space-y-4">
+          {newFormulaError && (
+            <div
+              data-testid="new-formula-error"
+              className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/60 text-rose-200 text-xs flex items-start gap-2"
+            >
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{newFormulaError}</span>
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="new-formula-name" className="block text-xs text-slate-300 mb-1">
+              Formula Name *
+            </label>
+            <input
+              id="new-formula-name"
+              data-testid="new-formula-name-input"
+              type="text"
+              required
+              value={newFormulaName}
+              onChange={(e) => setNewFormulaName(e.target.value)}
+              placeholder="e.g., Coastal Cypress Study"
+              className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="new-formula-product" className="block text-xs text-slate-300 mb-1">
+                Intended Product *
+              </label>
+              <input
+                id="new-formula-product"
+                data-testid="new-formula-intended-product-input"
+                type="text"
+                required
+                value={newFormulaIntendedProduct}
+                onChange={(e) => setNewFormulaIntendedProduct(e.target.value)}
+                placeholder="e.g., Fine Fragrance Spray, Body Lotion"
+                className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="new-formula-conc" className="block text-xs text-slate-300 mb-1">
+                Finished-Product Concentration (%) *
+              </label>
+              <input
+                id="new-formula-conc"
+                data-testid="new-formula-conc-input"
+                type="number"
+                min={0.01}
+                max={100}
+                step="any"
+                required
+                value={newFormulaFinalConc}
+                onChange={(e) => setNewFormulaFinalConc(e.target.value)}
+                placeholder="Enter % (0.01–100)"
+                className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs font-mono-tabular text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="new-formula-ifra-category" className="block text-xs text-slate-300 mb-1">
+              IFRA Category *
+            </label>
+            <select
+              id="new-formula-ifra-category"
+              data-testid="new-formula-ifra-category-select"
+              required
+              value={newFormulaIfraCategory}
+              onChange={(e) => setNewFormulaIfraCategory(e.target.value)}
+              className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">Select IFRA Category...</option>
+              {IFRA_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt.code} value={opt.value}>
+                  {opt.value}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="new-formula-project" className="block text-xs text-slate-300 mb-1">
+              Project (Optional)
+            </label>
+            <input
+              id="new-formula-project"
+              type="text"
+              value={newFormulaProject}
+              onChange={(e) => setNewFormulaProject(e.target.value)}
+              placeholder="e.g., Personal Study"
+              className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="new-formula-brief" className="block text-xs text-slate-300 mb-1">
+              Olfactory Target Brief (Optional)
+            </label>
+            <textarea
+              id="new-formula-brief"
+              rows={3}
+              value={newFormulaBrief}
+              onChange={(e) => setNewFormulaBrief(e.target.value)}
+              placeholder="Describe the atmosphere, texture, evolution, and desired drydown..."
+              className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-800 shrink-0 sticky bottom-0 bg-[#111621] z-10">
+          <button
+            type="button"
+            onClick={() => {
+              setShowNewFormulaModal(false);
+              setNewFormulaError(null);
+            }}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            data-testid="submit-new-formula-btn"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white rounded-md shadow transition-colors"
+          >
+            Create Formula V1
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 
   const handleExportCSV = () => {
     if (!activeFormula) return;
@@ -950,95 +1194,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
           </div>
         )}
 
-        {showNewFormulaModal && (
-          <div
-            className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs overflow-y-auto"
-            onClick={() => setShowNewFormulaModal(false)}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-formula-title"
-          >
-            <form
-              onSubmit={handleCreateNewFormula}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg rounded-xl bg-[#111621] border border-slate-700 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden text-xs my-auto"
-            >
-              {/* Sticky Header with Close Button */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0 sticky top-0 bg-[#111621] z-10">
-                <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
-                    Formula Workspace
-                  </span>
-                  <h3 id="create-formula-title" className="text-base font-semibold text-white">
-                    Create New Fragrance Formula
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowNewFormulaModal(false)}
-                  aria-label="Close"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Scrollable Form Body */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1 overscroll-contain space-y-4">
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Formula Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newFormulaName}
-                    onChange={(e) => setNewFormulaName(e.target.value)}
-                    placeholder="e.g., Coastal Cypress Study"
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Project</label>
-                  <input
-                    type="text"
-                    value={newFormulaProject}
-                    onChange={(e) => setNewFormulaProject(e.target.value)}
-                    placeholder="e.g., Commercial Brief / Eau de Parfum"
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">
-                    Olfactory Target Brief
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={newFormulaBrief}
-                    onChange={(e) => setNewFormulaBrief(e.target.value)}
-                    placeholder="Describe the atmosphere, texture, evolution, and desired drydown..."
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* Sticky Action Footer */}
-              <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-800 shrink-0 sticky bottom-0 bg-[#111621] z-10">
-                <button
-                  type="button"
-                  onClick={() => setShowNewFormulaModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white rounded-md shadow transition-colors"
-                >
-                  Create Formula V1
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        {showNewFormulaModal && renderNewFormulaModal()}
       </div>
     );
   }
@@ -1095,92 +1251,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
           </div>
         </div>
 
-        {showNewFormulaModal && (
-          <div
-            className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs overflow-y-auto"
-            onClick={() => setShowNewFormulaModal(false)}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-formula-lab-title"
-          >
-            <form
-              onSubmit={handleCreateNewFormula}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg rounded-xl bg-[#111621] border border-slate-700 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden text-xs my-auto"
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0 sticky top-0 bg-[#111621] z-10">
-                <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
-                    Formula Workspace
-                  </span>
-                  <h3 id="create-formula-lab-title" className="text-base font-semibold text-white">
-                    Create New Fragrance Formula
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowNewFormulaModal(false)}
-                  aria-label="Close"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1 overscroll-contain space-y-4">
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Formula Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newFormulaName}
-                    onChange={(e) => setNewFormulaName(e.target.value)}
-                    placeholder="e.g., Coastal Cypress Study"
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Project</label>
-                  <input
-                    type="text"
-                    value={newFormulaProject}
-                    onChange={(e) => setNewFormulaProject(e.target.value)}
-                    placeholder="e.g., Commercial Brief / Eau de Parfum"
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">
-                    Olfactory Target Brief
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={newFormulaBrief}
-                    onChange={(e) => setNewFormulaBrief(e.target.value)}
-                    placeholder="Describe the atmosphere, texture, evolution, and desired drydown..."
-                    className="w-full bg-[#0B0E14] border border-slate-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-800 shrink-0 sticky bottom-0 bg-[#111621] z-10">
-                <button
-                  type="button"
-                  onClick={() => setShowNewFormulaModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white rounded-md shadow transition-colors"
-                >
-                  Create Formula V1
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        {showNewFormulaModal && renderNewFormulaModal()}
       </div>
     );
   }
@@ -1205,6 +1276,15 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
             Compose and normalize fragrance formulas, convert batch units, verify IFRA compliance, and compare version lineages.
           </p>
         </div>
+        <button
+          type="button"
+          data-testid="lab-new-formula-btn"
+          onClick={() => setShowNewFormulaModal(true)}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5 shrink-0" />
+          <span>New Formula</span>
+        </button>
       </div>
 
       {/* Formula Selector & Version Control Bar */}
@@ -1212,9 +1292,13 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-              <span>Project: {activeFormula.projectName}</span>
+              <span>Project: {activeFormula.projectName || 'Unspecified'}</span>
               <span aria-hidden="true">·</span>
-              <span>IFRA {activeFormula.ifraCategory}</span>
+              <span>Product: {activeFormula.intendedProduct || 'Not specified'}</span>
+              <span aria-hidden="true">·</span>
+              <span>IFRA: {selectedIfraCategory || 'Not specified'}</span>
+              <span aria-hidden="true">·</span>
+              <span>Conc: {finalConc !== null ? `${finalConc}%` : 'Not specified'}</span>
               <span aria-hidden="true">·</span>
               <span>Maturation Target: {currentVersion?.maturationDays || 14} Days</span>
             </div>
@@ -1771,7 +1855,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     <option value={100}>100 ml Atelier</option>
                   </select>
                   <span className="text-slate-400 font-mono-tabular whitespace-nowrap">
-                    @ {finalConc}%
+                    {finalConc !== null ? `@ ${finalConc}%` : '(Conc. Unset)'}
                   </span>
                 </div>
               </div>
@@ -1842,7 +1926,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
 
               <div className="p-3.5 rounded-lg bg-[#0B0E14] border border-slate-800 space-y-1">
                 <div className="text-[11px] text-slate-400">
-                  Finished {bottleSizeMl}ml Bottle Liquid Cost ({finalConc}% Conc.)
+                  Finished {bottleSizeMl}ml Bottle Liquid Cost ({finalConc !== null ? `${finalConc}% Conc.` : 'Conc. Unset'})
                 </div>
                 <div className="text-base font-mono-tabular font-semibold text-white">
                   {formatCurrencyAmount(
@@ -2125,19 +2209,37 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                   className={`w-4 h-4 shrink-0 ${
                     safetyReport.violationCount > 0
                       ? 'text-rose-400'
+                      : !hasValidSafetyContext || safetyReport.complianceState === 'INDETERMINATE'
+                      ? 'text-amber-400'
                       : 'text-emerald-400'
                   }`}
                 />
                 <h2 className="text-sm font-semibold text-white">
                   Real-Time IFRA Cumulative Safety Monitor
                 </h2>
-                {safetyReport.violationCount > 0 ? (
+                {!hasValidSafetyContext ? (
+                  <span
+                    data-testid="safety-indeterminate-badge"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/70 border border-amber-500/50 text-amber-300 text-[11px] font-mono-tabular font-semibold uppercase"
+                  >
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    <span>INDETERMINATE · Regulatory Context Required</span>
+                  </span>
+                ) : safetyReport.violationCount > 0 ? (
                   <span
                     data-testid="safety-risk-badge"
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 text-white text-[11px] font-semibold tracking-wide uppercase shadow-sm"
                   >
                     <AlertTriangle className="w-3 h-3 shrink-0" />
                     <span>Safety Risk · {safetyReport.violationCount} Exceeded</span>
+                  </span>
+                ) : safetyReport.complianceState === 'INDETERMINATE' ? (
+                  <span
+                    data-testid="safety-indeterminate-badge"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-600 text-amber-300 text-[11px] font-mono-tabular font-semibold"
+                  >
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    <span>INDETERMINATE · Lookup / Verification Required</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono-tabular font-medium">
@@ -2173,6 +2275,9 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                   onChange={(e) => setSelectedIfraCategory(e.target.value)}
                   className="bg-transparent font-mono-tabular text-xs text-white focus:outline-none"
                 >
+                  <option value="" className="bg-[#111621] text-slate-400">
+                    Select IFRA Category...
+                  </option>
                   {IFRA_CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.code} value={opt.value} className="bg-[#111621] text-white">
                       {opt.shortLabel}
@@ -2193,13 +2298,22 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     id="safety-monitor-final-conc"
                     data-testid="safety-monitor-conc-input"
                     type="number"
-                    min={1}
+                    min={0.01}
                     max={100}
-                    step={1}
-                    value={finalConc}
-                    onChange={(e) =>
-                      setFinalConc(Math.max(1, Math.min(100, Number(e.target.value) || 20)))
-                    }
+                    step="any"
+                    placeholder="—"
+                    value={finalConc ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        setFinalConc(null);
+                        return;
+                      }
+                      const num = Number(raw);
+                      setFinalConc(
+                        Number.isFinite(num) && num > 0 ? Math.min(100, num) : null
+                      );
+                    }}
                     className="w-14 bg-[#111621] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono-tabular text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
                   <span className="font-mono-tabular text-slate-400">%</span>
@@ -2216,6 +2330,23 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
               </button>
             </div>
           </div>
+
+          {!hasValidSafetyContext && (
+            <div
+              data-testid="safety-missing-context-banner"
+              className="rounded-lg bg-slate-900/90 border border-amber-500/50 p-3.5 flex items-start gap-2.5 text-xs text-amber-200"
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold text-white">
+                  Safety Status: INDETERMINATE — Missing Regulatory Context
+                </div>
+                <p className="text-slate-300 mt-0.5 leading-relaxed">
+                  Select an explicit IFRA Category and enter the Finished-Product Concentration (%) above to evaluate compliance. Safety is never calculated against assumed defaults.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Inline Regulatory Limit Import / Override Drawer */}
           {showImportLimitModal && (
@@ -3071,7 +3202,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
           </div>
         )}
 
-        {/* Sub-Panel 2: Dedicated Dual Regulatory Engine (IFRA 51st + EU Cosmetics Regulation) */}
+        {/* Sub-Panel 2: Dedicated Dual Regulatory Engine (IFRA + EU Cosmetics Regulation) */}
         {activeBottomPanel === 'safety' && (
           <div className="space-y-4 w-full max-w-full min-w-0">
             {/* Header with Dual Compliance Summary */}
@@ -3079,7 +3210,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-white">
-                    Dual Regulatory Compliance: IFRA 51st Amendment & EU Cosmetics Regulation (EC 1223/2009)
+                    Dual Regulatory Compliance: IFRA &amp; EU Cosmetics Regulation (EC 1223/2009)
                   </span>
                   <span
                     data-testid="formula-overall-compliance-state"
@@ -3097,7 +3228,7 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     data-testid="formula-ifra-compliance-state"
                     className="px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold bg-sky-950/60 border border-sky-600/50 text-sky-300"
                   >
-                    IFRA ({selectedIfraCategory}): {safetyReport.ifraComplianceState} ({safetyReport.violationCount} Violations · {safetyReport.indeterminateCount} Indeterminate)
+                    IFRA ({selectedIfraCategory || 'Unselected'}): {safetyReport.ifraComplianceState} ({safetyReport.violationCount} Violations · {safetyReport.indeterminateCount} Indeterminate)
                   </span>
                   <span
                     data-testid="formula-eu-compliance-state"
@@ -3107,22 +3238,34 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                   </span>
                   {safetyReport.euAllergenDeclarationCount !== undefined && safetyReport.euAllergenDeclarationCount > 0 && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono-tabular bg-amber-950/60 border border-amber-600/50 text-amber-300">
-                      {safetyReport.euAllergenDeclarationCount} EU Declarable Allergens (&gt;0.001% leave-on / &gt;0.01% rinse-off)
+                      {safetyReport.euAllergenDeclarationCount} EU Declarable Allergens
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  {safetyReport.disclaimer} · Taxonomy & Olfactory Reference: ScenTree CC BY-NC 4.0
+                  {safetyReport.disclaimer} · Taxonomy &amp; Olfactory Reference: ScenTree CC BY-NC 4.0
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs shrink-0">
                 <label className="text-slate-400">Finished Product Conc %:</label>
                 <input
                   type="number"
-                  min={1}
+                  min={0.01}
                   max={100}
-                  value={finalConc}
-                  onChange={(e) => setFinalConc(Number(e.target.value) || 20)}
+                  step="any"
+                  placeholder="—"
+                  value={finalConc ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      setFinalConc(null);
+                      return;
+                    }
+                    const num = Number(raw);
+                    setFinalConc(
+                      Number.isFinite(num) && num > 0 ? Math.min(100, num) : null
+                    );
+                  }}
                   className="w-16 bg-[#111621] border border-slate-800 rounded px-2 py-1 font-mono-tabular text-white text-right"
                 />
               </div>
@@ -3136,15 +3279,24 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                     <th className="py-2.5 px-3 sm:px-4 font-medium">Material</th>
                     <th className="py-2.5 px-3 sm:px-4 font-medium text-right">Active in Oil</th>
                     <th className="py-2.5 px-3 sm:px-4 font-medium text-right">
-                      Finished Product @ {finalConc}%
+                      Finished Product {finalConc !== null ? `@ ${finalConc}%` : '(Conc. Unset)'}
                     </th>
-                    <th className="py-2.5 px-3 sm:px-4 font-medium text-right">IFRA Cat 4</th>
+                    <th className="py-2.5 px-3 sm:px-4 font-medium text-right">
+                      IFRA Limit ({selectedIfraCategory || 'Unselected'})
+                    </th>
                     <th className="py-2.5 px-3 sm:px-4 font-medium text-right">EU Annex III</th>
                     <th className="py-2.5 px-3 sm:px-4 font-medium min-w-[140px]">Dual Progress Slider</th>
                     <th className="py-2.5 px-3 sm:px-4 font-medium">Compliance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
+                  {!hasValidSafetyContext && (
+                    <tr>
+                      <td colSpan={7} className="py-6 px-4 text-center text-amber-300 text-xs">
+                        INDETERMINATE — Select an IFRA Category and provide Finished-Product Concentration (%) to evaluate ingredient compliance.
+                      </td>
+                    </tr>
+                  )}
                   {safetyReport.evaluations.map((ev) => {
                     const isLookupReq = ev.maxAllowedPercentInFinalProduct === null;
                     const utilPct = ev.utilizationPercentOfLimit ?? 0;
@@ -3154,7 +3306,9 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
                           <div>{ev.materialName}</div>
                           {ev.euAllergenDeclarable && (
                             <span className="text-[10px] text-amber-400 font-mono-tabular">
-                              EU Allergen Threshold (&gt;0.001% leave-on / &gt;0.01% rinse-off)
+                              {ev.euApplicableLabelThresholdPct !== null
+                                ? `EU Allergen Threshold (>${ev.euApplicableLabelThresholdPct}%)`
+                                : 'EU Allergen Threshold: Exposure / Record Required'}
                             </span>
                           )}
                         </td>
@@ -3482,6 +3636,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
           </div>
         </div>
       )}
+
+      {showNewFormulaModal && renderNewFormulaModal()}
     </div>
   );
 };
