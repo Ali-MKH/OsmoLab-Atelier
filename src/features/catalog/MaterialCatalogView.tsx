@@ -45,12 +45,24 @@ function deduplicateMaterialsById(rows: RawMaterial[]): RawMaterial[] {
   return out;
 }
 
+function isSameCatalogQuery(
+  a: ServerCatalogQueryState,
+  b: ServerCatalogQueryState
+): boolean {
+  return (
+    a.q === b.q &&
+    a.family === b.family &&
+    a.origin === b.origin &&
+    a.pyramidCode === b.pyramidCode
+  );
+}
+
 /**
  * Autonomous, server-driven MaterialCatalogView:
  * - Owns q, family, origin, pyramidCode, limit=50, offset, total, hasMore, loadState, and error.
  * - Initial page loads limit=50&offset=0.
  * - Debounces search/filter queries (~250ms), passes a real AbortSignal, and ignores stale responses.
- * - Load More increments offset += 50 and deduplicates by material ID.
+ * - Lazy/infinite scroll increments offset += 50 with a query-stability guard and ref-based append lock, deduplicating by material ID.
  * - Overlays Shelf/Workbench metadata onto visible Catalog rows by material ID only (never appends unrelated shelf items to Catalog results).
  */
 export const AutonomousMaterialCatalogView: React.FC<
@@ -70,9 +82,13 @@ export const AutonomousMaterialCatalogView: React.FC<
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogLoadMoreError, setCatalogLoadMoreError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestSeqRef = useRef<number>(0);
+  const appendRequestInFlightRef = useRef<boolean>(false);
+  const getAuthHeadersRef = useRef(getAuthHeaders);
+  getAuthHeadersRef.current = getAuthHeaders;
 
   // Debounce query changes by 250ms
   useEffect(() => {
@@ -88,6 +104,10 @@ export const AutonomousMaterialCatalogView: React.FC<
       targetOffset: number,
       append: boolean
     ) => {
+      if (append && appendRequestInFlightRef.current) {
+        return;
+      }
+
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -96,14 +116,21 @@ export const AutonomousMaterialCatalogView: React.FC<
       const seq = ++requestSeqRef.current;
 
       if (append) {
+        appendRequestInFlightRef.current = true;
         setIsLoadingMore(true);
+        setCatalogLoadMoreError(null);
       } else {
+        appendRequestInFlightRef.current = false;
+        setIsLoadingMore(false);
         setLoadState('loading');
+        setCatalogError(null);
+        setCatalogLoadMoreError(null);
       }
-      setCatalogError(null);
 
       try {
-        const headers = getAuthHeaders ? await getAuthHeaders() : {};
+        const headers = getAuthHeadersRef.current
+          ? await getAuthHeadersRef.current()
+          : {};
         if (controller.signal.aborted || seq !== requestSeqRef.current) {
           return;
         }
@@ -130,6 +157,7 @@ export const AutonomousMaterialCatalogView: React.FC<
         setOffset(targetOffset);
         setHasMore(Boolean(res.hasMore));
         setLoadState('ready');
+        setCatalogLoadMoreError(null);
       } catch (err: unknown) {
         if (
           controller.signal.aborted ||
@@ -138,17 +166,22 @@ export const AutonomousMaterialCatalogView: React.FC<
         ) {
           return;
         }
-        setCatalogError(
-          err instanceof Error ? err.message : 'Failed to load catalog slice from server.'
-        );
-        setLoadState('error');
+        const message =
+          err instanceof Error ? err.message : 'Failed to load catalog slice from server.';
+        if (append) {
+          setCatalogLoadMoreError(message);
+        } else {
+          setCatalogError(message);
+          setLoadState('error');
+        }
       } finally {
         if (seq === requestSeqRef.current) {
+          appendRequestInFlightRef.current = false;
           setIsLoadingMore(false);
         }
       }
     },
-    [getAuthHeaders]
+    []
   );
 
   // Trigger server fetch whenever debouncedQuery changes (resets to offset = 0)
@@ -158,6 +191,7 @@ export const AutonomousMaterialCatalogView: React.FC<
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      appendRequestInFlightRef.current = false;
     };
   }, [debouncedQuery, executeCatalogFetch]);
 
@@ -171,12 +205,7 @@ export const AutonomousMaterialCatalogView: React.FC<
           pyramidCode:
             partial.pyramidCode !== undefined ? partial.pyramidCode : prev.pyramidCode,
         };
-        if (
-          next.q === prev.q &&
-          next.family === prev.family &&
-          next.origin === prev.origin &&
-          next.pyramidCode === prev.pyramidCode
-        ) {
+        if (isSameCatalogQuery(next, prev)) {
           return prev;
         }
         return next;
@@ -186,10 +215,26 @@ export const AutonomousMaterialCatalogView: React.FC<
   );
 
   const handleLoadMore = useCallback(() => {
-    if (loadState === 'loading' || isLoadingMore || !hasMore) return;
+    if (
+      loadState === 'loading' ||
+      isLoadingMore ||
+      appendRequestInFlightRef.current ||
+      !hasMore ||
+      !isSameCatalogQuery(queryState, debouncedQuery)
+    ) {
+      return;
+    }
     const nextOffset = offset + CATALOG_PAGE_LIMIT;
     void executeCatalogFetch(debouncedQuery, nextOffset, true);
-  }, [loadState, isLoadingMore, hasMore, offset, debouncedQuery, executeCatalogFetch]);
+  }, [
+    loadState,
+    isLoadingMore,
+    hasMore,
+    queryState,
+    debouncedQuery,
+    offset,
+    executeCatalogFetch,
+  ]);
 
   // Overlay user shelf/workbench metadata onto visible Catalog rows by material ID only.
   // Never append unrelated shelf rows into the current Catalog query results.
@@ -250,9 +295,10 @@ export const AutonomousMaterialCatalogView: React.FC<
       shelfMaterials={props.materials}
       catalogTotalCount={totalCount}
       catalogHasMore={hasMore}
-      isLoadingMoreCatalog={isLoadingMore || loadState === 'loading'}
+      isLoadingMoreCatalog={isLoadingMore}
       catalogLoadState={loadState}
       catalogError={catalogError}
+      catalogLoadMoreError={catalogLoadMoreError}
       onLoadMoreCatalog={handleLoadMore}
       onRetryCatalog={() => void executeCatalogFetch(debouncedQuery, 0, false)}
       onCatalogQueryChange={handleCatalogQueryChange}

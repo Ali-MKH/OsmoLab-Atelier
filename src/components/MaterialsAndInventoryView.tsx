@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AccordDefinition,
   AccordItem,
@@ -61,6 +61,7 @@ export interface MaterialsAndInventoryViewProps {
   isLoadingMoreCatalog?: boolean;
   catalogLoadState?: LoadState;
   catalogError?: string | null;
+  catalogLoadMoreError?: string | null;
   shelfLoadState?: LoadState;
   onCatalogQueryChange?: (query: {
     q: string;
@@ -144,6 +145,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   isLoadingMoreCatalog = false,
   catalogLoadState = 'ready',
   catalogError = null,
+  catalogLoadMoreError = null,
   shelfLoadState = 'ready',
   onCatalogQueryChange,
   onLoadMoreCatalog,
@@ -244,6 +246,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   };
 
   const [isLoadingStarterOrgan, setIsLoadingStarterOrgan] = useState(false);
+  const catalogScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const catalogInfiniteSentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!onCatalogQueryChange) return;
@@ -254,6 +258,60 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       pyramidCode: pyramidFilter,
     });
   }, [searchQuery, familyFilter, originFilter, pyramidFilter, onCatalogQueryChange]);
+
+  useEffect(() => {
+    if (catalogScrollContainerRef.current) {
+      catalogScrollContainerRef.current.scrollTop = 0;
+    }
+  }, [searchQuery, familyFilter, originFilter, pyramidFilter, paletteViewTab]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+    if (
+      paletteViewTab !== 'catalog' ||
+      !catalogHasMore ||
+      catalogLoadState === 'loading' ||
+      isLoadingMoreCatalog ||
+      Boolean(catalogLoadMoreError) ||
+      !onLoadMoreCatalog
+    ) {
+      return;
+    }
+
+    const rootEl = catalogScrollContainerRef.current;
+    const sentinelEl = catalogInfiniteSentinelRef.current;
+    if (!rootEl || !sentinelEl) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry || !entry.isIntersecting) return;
+        onLoadMoreCatalog();
+      },
+      {
+        root: rootEl,
+        rootMargin: '0px 0px 240px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinelEl);
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    paletteViewTab,
+    catalogHasMore,
+    catalogLoadState,
+    isLoadingMoreCatalog,
+    catalogLoadMoreError,
+    onLoadMoreCatalog,
+    materials.length,
+  ]);
 
   const isMaterialOnShelf = (mat: RawMaterial): boolean => {
     return Boolean(mat.isOnShelf);
@@ -2772,7 +2830,11 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
           )}
 
           {/* Compact Materials List */}
-          <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
+          <div
+            ref={catalogScrollContainerRef}
+            data-testid="catalog-scroll-container"
+            className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1"
+          >
             {paletteViewTab === 'catalog' && catalogLoadState === 'error' ? (
               <div
                 data-testid="catalog-error-state"
@@ -2987,24 +3049,51 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 );
               })}
 
-              {paletteViewTab === 'catalog' && catalogHasMore && onLoadMoreCatalog && (
-                <div className="pt-2 pb-1">
-                  <button
-                    type="button"
-                    data-testid="catalog-load-more-btn"
-                    disabled={catalogLoadState === 'loading' || isLoadingMoreCatalog}
-                    onClick={onLoadMoreCatalog}
-                    className="w-full py-2 px-3 rounded-lg bg-[#0B0E14] hover:bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span>
-                      {catalogLoadState === 'loading' || isLoadingMoreCatalog
-                        ? 'Loading more catalog materials...'
-                        : `Load More Materials (${Math.max(
-                            0,
-                            effectiveCatalogTotal - filteredMaterials.length
-                          )} remaining)`}
-                    </span>
-                  </button>
+              {paletteViewTab === 'catalog' && catalogHasMore && (
+                <div
+                  ref={catalogInfiniteSentinelRef}
+                  data-testid="catalog-infinite-scroll-sentinel"
+                  aria-live="polite"
+                  className="pt-2 pb-1 min-h-[16px]"
+                >
+                  {catalogLoadMoreError ? (
+                    <div
+                      data-testid="catalog-load-more-error"
+                      className="py-2 px-3 rounded-lg bg-[#0B0E14] border border-rose-500/40 text-xs text-slate-300 flex items-center justify-between gap-2"
+                    >
+                      <span className="text-rose-400 truncate">
+                        Failed to load more materials: {catalogLoadMoreError}
+                      </span>
+                      {onLoadMoreCatalog && (
+                        <button
+                          type="button"
+                          data-testid="catalog-load-more-retry-btn"
+                          onClick={onLoadMoreCatalog}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 text-[11px] font-medium shrink-0 transition-colors"
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  ) : isLoadingMoreCatalog ? (
+                    <div
+                      data-testid="catalog-loading-more-indicator"
+                      className="py-2 px-3 rounded-lg bg-[#0B0E14]/80 border border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-center gap-2"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Loading more materials…</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {paletteViewTab === 'catalog' && !catalogHasMore && filteredMaterials.length > 0 && (
+                <div
+                  data-testid="catalog-end-of-results"
+                  aria-live="polite"
+                  className="pt-2 pb-1 text-center text-[11px] text-slate-500 font-mono-tabular"
+                >
+                  All matching materials loaded ({filteredMaterials.length})
                 </div>
               )}
               </>
