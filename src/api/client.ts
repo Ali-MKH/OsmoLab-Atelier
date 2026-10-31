@@ -287,11 +287,53 @@ export async function loadStarterOrganApi(
   }>(res);
 }
 
+export function sanitizeFormula(f: Formula): Formula {
+  const versions = Array.isArray(f?.versions)
+    ? f.versions.map((v) => ({
+        ...v,
+        items: Array.isArray(v?.items) ? v.items : [],
+        normalizedItems: Array.isArray(v?.normalizedItems) ? v.normalizedItems : [],
+      }))
+    : [];
+  return {
+    ...f,
+    versions,
+  };
+}
+
+export function sanitizeAccord(a: AccordDefinition): AccordDefinition {
+  const versions = Array.isArray(a?.versions)
+    ? a.versions.map((v) => ({
+        ...v,
+        items: Array.isArray(v?.items) ? v.items : [],
+      }))
+    : [];
+  const activeVerSnap =
+    versions.find((v) => v.versionLabel === a?.activeVersionLabel) ||
+    (versions.length > 0 ? versions[versions.length - 1] : undefined);
+  const items = Array.isArray(a?.items)
+    ? a.items
+    : activeVerSnap && Array.isArray(activeVerSnap.items)
+    ? activeVerSnap.items
+    : [];
+  return {
+    ...a,
+    items,
+    versions,
+  };
+}
+
 export async function fetchFormulasListApi(
   headers: Record<string, string>
 ): Promise<FormulasListResponse> {
   const res = await fetch('/api/formulas', { headers });
-  return parseJsonResponse<FormulasListResponse>(res);
+  const data = await parseJsonResponse<FormulasListResponse>(res);
+  return {
+    ...data,
+    formulas: Array.isArray(data.formulas)
+      ? data.formulas.map((f) => sanitizeFormula(f))
+      : [],
+  };
 }
 
 export async function fetchFormulaDetailApi(
@@ -299,7 +341,11 @@ export async function fetchFormulaDetailApi(
   headers: Record<string, string>
 ): Promise<FormulaDetailResponse> {
   const res = await fetch(`/api/formulas/${formulaId}`, { headers });
-  return parseJsonResponse<FormulaDetailResponse>(res);
+  const data = await parseJsonResponse<FormulaDetailResponse>(res);
+  return {
+    ...data,
+    formula: data.formula ? sanitizeFormula(data.formula) : data.formula,
+  };
 }
 
 export async function saveFormulaVersionApi(
@@ -321,7 +367,13 @@ export async function fetchAccordsApi(
   headers: Record<string, string>
 ): Promise<AccordsListResponse> {
   const res = await fetch('/api/accords', { headers });
-  return parseJsonResponse<AccordsListResponse>(res);
+  const data = await parseJsonResponse<AccordsListResponse>(res);
+  return {
+    ...data,
+    accords: Array.isArray(data.accords)
+      ? data.accords.map((a) => sanitizeAccord(a))
+      : [],
+  };
 }
 
 export async function createAccordApi(

@@ -133,12 +133,12 @@ export interface MaterialsAndInventoryViewProps {
 
 export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps> = ({
   mode,
-  materials,
-  shelfMaterials,
+  materials = [],
+  shelfMaterials = [],
   selectedMaterialId,
-  regulatoryLimits,
-  scentMemories,
-  usageReviews,
+  regulatoryLimits = [],
+  scentMemories = [],
+  usageReviews = [],
   catalogTotal,
   catalogTotalCount,
   catalogHasMore = false,
@@ -151,8 +151,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   onLoadMoreCatalog,
   onRetryCatalog,
   onLoadStarterOrgan,
-  accords,
-  formulas,
+  accords = [],
+  formulas = [],
   educationalPromptsEnabled,
   onSelectMaterial,
   onCreateMaterial,
@@ -310,7 +310,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     isLoadingMoreCatalog,
     catalogLoadMoreError,
     onLoadMoreCatalog,
-    materials.length,
+    (materials ?? []).length,
   ]);
 
   const isMaterialOnShelf = (mat: RawMaterial): boolean => {
@@ -525,11 +525,12 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                   1. Choose Destination Formula
                 </label>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {formulas.map((f) => {
+                  {(formulas ?? []).map((f) => {
                     const isSelected = targetFormulaModal.selectedFormulaId === f.id;
+                    const fVersions = Array.isArray(f?.versions) ? f.versions : [];
                     const activeVer =
-                      f.versions.find((v) => v.versionLabel === f.activeVersionLabel) ||
-                      f.versions[0];
+                      fVersions.find((v) => v.versionLabel === f.activeVersionLabel) ||
+                      fVersions[0];
                     return (
                       <button
                         key={f.id}
@@ -553,7 +554,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-400 mt-0.5">
-                            {f.projectName} · {f.intendedProduct} · {activeVer?.items.length || 0} notes
+                            {f.projectName} · {f.intendedProduct} · {activeVer?.items?.length ?? 0} notes
                           </div>
                         </div>
                         <span
@@ -1075,7 +1076,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     }
   };
   const [selectedHistoryAccordId, setSelectedHistoryAccordId] = useState<number>(
-    accords[0]?.id || 1
+    (accords ?? [])[0]?.id || 1
   );
   const [editingAccordId, setEditingAccordId] = useState<number | null>(null);
   const [accordVersionNoteDraft, setAccordVersionNoteDraft] = useState('');
@@ -1085,31 +1086,39 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   const [cardSearchQuery, setCardSearchQuery] = useState<Record<number, string>>({});
   const [cardInsertDosage, setCardInsertDosage] = useState<Record<number, number>>({});
 
+  const safeMaterials = Array.isArray(materials) ? materials : [];
+  const safeShelfMaterials = Array.isArray(shelfMaterials) ? shelfMaterials : [];
+
   const selectedMaterial =
-    materials.find((m) => m.id === selectedMaterialId) ||
-    shelfMaterials?.find((m) => m.id === selectedMaterialId) ||
-    materials[0] ||
-    shelfMaterials?.[0] ||
+    safeMaterials.find((m) => m.id === selectedMaterialId) ||
+    safeShelfMaterials.find((m) => m.id === selectedMaterialId) ||
+    safeMaterials[0] ||
+    safeShelfMaterials[0] ||
     null;
 
-  const selectedLimit = regulatoryLimits.find(
+  const selectedLimit = (regulatoryLimits ?? []).find(
     (r) => r.materialId === selectedMaterial?.id
   );
 
-  const selectedMemory = scentMemories.find(
+  const selectedMemory = (scentMemories ?? []).find(
     (mem) => mem.materialId === selectedMaterial?.id
   );
 
   // Compute all formulas where this material is used
-  const materialUsageList = formulas.flatMap((f) =>
-    f.versions.flatMap((v) => {
-      const found = v.items.find(
+  const safeFormulas = Array.isArray(formulas) ? formulas : [];
+  const materialUsageList = safeFormulas.flatMap((f) => {
+    const fVersions = Array.isArray(f?.versions) ? f.versions : [];
+    return fVersions.flatMap((v) => {
+      const vItems = Array.isArray(v?.items) ? v.items : [];
+      const found = vItems.find(
         (i) =>
           i.materialId === selectedMaterial?.id ||
-          i.name.toLowerCase() === selectedMaterial?.name.toLowerCase()
+          (i.name && selectedMaterial?.name &&
+            i.name.toLowerCase() === selectedMaterial.name.toLowerCase())
       );
       if (!found) return [];
-      const review = usageReviews.find(
+      const safeReviews = Array.isArray(usageReviews) ? usageReviews : [];
+      const review = safeReviews.find(
         (r) =>
           r.materialId === selectedMaterial?.id &&
           r.versionLabel === v.versionLabel
@@ -1127,8 +1136,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
             'Integrated cleanly into structural backbone.',
         },
       ];
-    })
-  );
+    });
+  });
 
   const handleCreateMaterialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1248,16 +1257,17 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   // 1. ACCORDS & BASES MODE
   if (mode === 'accords') {
     const getAccordVersions = (acc: AccordDefinition): AccordVersionSnapshot[] => {
-      if (acc.versions && acc.versions.length > 0) {
+      if (Array.isArray(acc?.versions) && acc.versions.length > 0) {
         return acc.versions;
       }
+      const accItems = Array.isArray(acc?.items) ? acc.items : [];
       return [
         {
           versionId: `acc-${acc.id}-v1`,
           versionLabel: acc.activeVersionLabel || 'V1',
           createdAt: '2026-10-20 10:00',
           versionNotes: acc.objective || 'Initial baseline composition',
-          items: acc.items.map((it) => ({ ...it })),
+          items: accItems.map((it) => ({ ...it })),
         },
       ];
     };
@@ -1292,17 +1302,22 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
     };
 
     const getActiveFormulasUsingAccord = (acc: AccordDefinition): Formula[] => {
-      return formulas.filter((f) => {
+      const safeFormulas = Array.isArray(formulas) ? formulas : [];
+      return safeFormulas.filter((f) => {
         if (f.status === 'Archived') return false;
+        const fVersions = Array.isArray(f?.versions) ? f.versions : [];
         const activeVer =
-          f.versions.find((v) => v.versionLabel === f.activeVersionLabel) ||
-          f.versions[f.versions.length - 1];
+          fVersions.find((v) => v.versionLabel === f.activeVersionLabel) ||
+          (fVersions.length > 0 ? fVersions[fVersions.length - 1] : undefined);
         if (!activeVer) return false;
-        return activeVer.items.some(
+        const activeItems = Array.isArray(activeVer.items) ? activeVer.items : [];
+        return activeItems.some(
           (item) =>
             item.accordId === acc.id ||
             item.parentAccordId === acc.id ||
             (item.type === 'accord' &&
+              item.name &&
+              acc.name &&
               item.name.trim().toLowerCase() === acc.name.trim().toLowerCase())
         );
       });
@@ -1322,8 +1337,9 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
       setAccCategory(acc.category || 'Floral');
       setAccDescription(acc.description || '');
       setAccObjective(acc.objective || '');
+      const accItems = Array.isArray(acc?.items) ? acc.items : [];
       setAccDraftItems(
-        acc.items.map((it) => ({
+        accItems.map((it) => ({
           materialId: it.materialId,
           materialName: it.materialName,
           percentage: Number(it.percentage) || 10,
@@ -2240,7 +2256,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 className="space-y-3"
               >
                 {accords.map((acc) => {
-                  const totalPct = acc.items.reduce(
+                  const accItems = Array.isArray(acc?.items) ? acc.items : [];
+                  const totalPct = accItems.reduce(
                     (s, it) => s + (Number(it.percentage) || 0),
                     0
                   );
@@ -2295,7 +2312,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
 
                         {/* Compact Inline Ingredient Pills */}
                         <div className="flex flex-wrap items-center gap-1.5">
-                          {acc.items.map((item, idx) => (
+                          {accItems.map((item, idx) => (
                             <span
                               key={idx}
                               className="px-2.5 py-1 rounded-md bg-[#0B0E14] border border-slate-800/90 text-xs text-slate-200 font-normal"
@@ -2360,7 +2377,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
               /* DETAILED CARDS VIEW FOR ACCORDS */
               <div className="grid grid-cols-1 gap-6">
                 {accords.map((acc) => {
-                  const totalPct = acc.items.reduce(
+                  const accItems = Array.isArray(acc?.items) ? acc.items : [];
+                  const totalPct = accItems.reduce(
                     (s, it) => s + (Number(it.percentage) || 0),
                     0
                   );
@@ -2415,7 +2433,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="font-mono-tabular">
-                              {acc.items.length} Notes · Total:{' '}
+                              {accItems.length} Notes · Total:{' '}
                               <span
                                 className={
                                   isNormalized ? 'text-emerald-400' : 'text-amber-400'
@@ -2470,8 +2488,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                                 onClick={() =>
                                   handleCommitAccordVersion(
                                     acc,
-                                    acc.items,
-                                    `Snapshot saved from card (${acc.items.length} notes)`
+                                    accItems,
+                                    `Snapshot saved from card (${accItems.length} notes)`
                                   )
                                 }
                                 className="px-2.5 py-1 rounded bg-[#0B0E14] hover:bg-slate-800 text-slate-300 border border-slate-800 text-[11px] font-normal transition-colors"
@@ -2489,7 +2507,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                           </div>
 
                           <div className="space-y-2">
-                            {acc.items.map((item, idx) => {
+                            {accItems.map((item, idx) => {
                               const matMeta = materials.find((m) => m.id === item.materialId);
                               return (
                                 <div
@@ -2695,11 +2713,19 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
   };
 
   // 2. RAW MATERIALS PALETTE: MY WORKBENCH vs MY SHELF vs CATALOG LIBRARY
-  const activeShelfSource = (shelfMaterials ?? materials).filter((m) =>
-    isMaterialOnShelf(m)
-  );
+  const activeShelfSource = (
+    Array.isArray(shelfMaterials) && shelfMaterials.length > 0
+      ? shelfMaterials
+      : Array.isArray(materials)
+      ? materials
+      : []
+  ).filter((m) => isMaterialOnShelf(m));
   const sourceList =
-    paletteViewTab === 'catalog' ? materials : activeShelfSource;
+    paletteViewTab === 'catalog'
+      ? Array.isArray(materials)
+        ? materials
+        : []
+      : activeShelfSource;
 
   const filteredMaterials = sourceList.filter((m) => {
     const isOnShelf = isMaterialOnShelf(m);
@@ -2740,7 +2766,8 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
 
   const workbenchCount = activeShelfSource.filter((m) => isMaterialOnWorkbench(m)).length;
   const shelfCount = activeShelfSource.length;
-  const effectiveCatalogTotal = catalogTotal ?? catalogTotalCount ?? materials.length;
+  const effectiveCatalogTotal =
+    catalogTotal ?? catalogTotalCount ?? (materials ?? []).length;
 
   return (
     <div className="space-y-6">
@@ -3204,7 +3231,7 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                 <div className="min-w-0">
                   <span className="text-slate-400 block text-[11px]">Facets</span>
                   <span className="text-white font-medium break-words">
-                    {selectedMaterial.facets.join(' · ')}
+                    {(Array.isArray(selectedMaterial.facets) ? selectedMaterial.facets : []).join(' · ') || '—'}
                   </span>
                 </div>
                 <div className="min-w-0">
@@ -3530,7 +3557,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                         Things to Observe (Perfumery School Study)
                       </h3>
                       <ul className="space-y-2 text-xs text-slate-300 list-disc list-inside">
-                        {selectedMaterial.educationalObserve.map((obs, i) => (
+                        {(Array.isArray(selectedMaterial.educationalObserve)
+                          ? selectedMaterial.educationalObserve
+                          : []
+                        ).map((obs, i) => (
                           <li key={i} className="leading-relaxed">
                             {obs}
                           </li>
@@ -3550,7 +3580,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                           Harmonious Complements (Synergy &amp; Bridging):
                         </span>
                         <span className="text-emerald-300 font-medium">
-                          {selectedMaterial.complements.join(' · ') || 'Hedione · Bergamot FCF'}
+                          {(Array.isArray(selectedMaterial.complements)
+                            ? selectedMaterial.complements
+                            : []
+                          ).join(' · ') || 'Hedione · Bergamot FCF'}
                         </span>
                       </div>
                       <div className="pt-2 border-t border-slate-800/80">
@@ -3558,7 +3591,10 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                           Creative Contrasts (Tension &amp; Counterpoint):
                         </span>
                         <span className="text-amber-300 font-medium">
-                          {selectedMaterial.contrasts.join(' · ') || 'Vetiver Haiti EO'}
+                          {(Array.isArray(selectedMaterial.contrasts)
+                            ? selectedMaterial.contrasts
+                            : []
+                          ).join(' · ') || 'Vetiver Haiti EO'}
                         </span>
                       </div>
                     </div>

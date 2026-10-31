@@ -244,7 +244,7 @@ export const AutonomousMaterialCatalogView: React.FC<
       shelfById.set(item.materialId, item);
     }
     const localPropsById = new Map<number, RawMaterial>();
-    for (const m of props.materials) {
+    for (const m of props.materials || []) {
       localPropsById.set(m.id, m);
     }
 
@@ -292,7 +292,9 @@ export const AutonomousMaterialCatalogView: React.FC<
     <BaseMaterialCatalogView
       {...props}
       materials={overlaidCatalogMaterials}
-      shelfMaterials={props.materials}
+      shelfMaterials={props.materials ?? []}
+      accords={props.accords ?? []}
+      formulas={props.formulas ?? []}
       catalogTotalCount={totalCount}
       catalogHasMore={hasMore}
       isLoadingMoreCatalog={isLoadingMore}

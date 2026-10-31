@@ -44,6 +44,8 @@ import {
   createEvaluationApi,
   fetchScentMemoriesApi,
   saveScentMemoryApi,
+  sanitizeFormula,
+  sanitizeAccord,
 } from './api/client';
 import {
   GlobalSearchView,
@@ -378,7 +380,7 @@ export default function App() {
       const raw = localStorage.getItem('osmolab_stage2_accords');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed as AccordDefinition[];
+        if (Array.isArray(parsed)) return parsed.map((a) => sanitizeAccord(a));
       }
     } catch {
       // ignore
@@ -390,7 +392,7 @@ export default function App() {
       const raw = localStorage.getItem('osmolab_stage2_formulas');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed as Formula[];
+        if (Array.isArray(parsed)) return parsed.map((f) => sanitizeFormula(f));
       }
     } catch {
       // ignore
@@ -2400,7 +2402,7 @@ export default function App() {
                     activeMaterialPercent: dosageGrams,
                     supplier: 'In-House Accord',
                     costPerGram: 0.45,
-                    notes: `Inserted from Accord Library (${accord.items.length} components)`,
+                    notes: `Inserted from Accord Library (${accord.items?.length ?? 0} components)`,
                   },
                 ];
                 const totalWeight = rawItems.reduce((s, it) => s + it.quantityGrams, 0);

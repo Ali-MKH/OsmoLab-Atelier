@@ -557,10 +557,21 @@ function safeParseArray(str: string | null | undefined): string[] {
   }
 }
 
+function safeParseArrayJson<T>(str: string | null | undefined): T[] {
+  if (!str) return [];
+  try {
+    const parsed = JSON.parse(str);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function safeParseObject<T>(str: string | null | undefined, fallback: T): T {
   if (!str) return fallback;
   try {
-    return JSON.parse(str) as T;
+    const parsed = JSON.parse(str);
+    return parsed === null || parsed === undefined ? fallback : (parsed as T);
   } catch {
     return fallback;
   }
@@ -611,7 +622,6 @@ export async function importGlobalCatalogV11(): Promise<CatalogImportSummary> {
 }
 
 async function upsertGlobalCatalogInTransaction(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   bundle = loadGlobalCatalogV11()
 ): Promise<CatalogImportSummary> {
@@ -1452,13 +1462,15 @@ async function getOrInitializeWorkspaceInDb(
           ? v.createdAt.toISOString().slice(0, 16).replace('T', ' ')
           : '2026-10-01 10:00',
         versionNotes: v.versionNotes || '',
-        items: vItems.length > 0 ? vItems : safeParseObject(acc.itemsJson, []),
+        items: vItems.length > 0 ? vItems : safeParseArrayJson<AccordItem>(acc.itemsJson),
       };
     });
 
     const activeVerSnap =
       versionSnapshots.find((v) => v.versionLabel === acc.activeVersionLabel) ||
-      versionSnapshots[versionSnapshots.length - 1];
+      (versionSnapshots.length > 0
+        ? versionSnapshots[versionSnapshots.length - 1]
+        : undefined);
 
     return {
       id: acc.id,
@@ -1471,7 +1483,9 @@ async function getOrInitializeWorkspaceInDb(
       isEducational: acc.isEducational ?? false,
       activeVersionId: activeVerSnap?.id,
       activeVersionLabel: acc.activeVersionLabel || activeVerSnap?.versionLabel || 'V1',
-      items: activeVerSnap ? activeVerSnap.items : safeParseObject(acc.itemsJson, []),
+      items: activeVerSnap
+        ? (Array.isArray(activeVerSnap.items) ? activeVerSnap.items : [])
+        : safeParseArrayJson<AccordItem>(acc.itemsJson),
       olfactoryProfile: safeParseObject(acc.olfactoryProfileJson, {}),
       versions: versionSnapshots,
     };
@@ -3918,7 +3932,8 @@ export async function getUserFormulas(uid: string): Promise<Formula[]> {
           status: (v.status as 'Draft' | 'Committed') || 'Committed',
           versionNotes: v.versionNotes || '',
           maturationDays: v.maturationDays ?? 14,
-          items: safeParseObject(v.itemsJson, []),
+          items: safeParseArrayJson<FormulaLineItem>(v.itemsJson),
+          normalizedItems: [],
           createdAt: v.createdAt
             ? v.createdAt.toISOString().slice(0, 10)
             : '2026-10-15',
@@ -3997,13 +4012,15 @@ export async function getUserAccords(uid: string): Promise<AccordDefinition[]> {
           ? v.createdAt.toISOString().slice(0, 16).replace('T', ' ')
           : '2026-10-01 10:00',
         versionNotes: v.versionNotes || '',
-        items: vItems.length > 0 ? vItems : safeParseObject(acc.itemsJson, []),
+        items: vItems.length > 0 ? vItems : safeParseArrayJson<AccordItem>(acc.itemsJson),
       };
     });
 
     const activeVerSnap =
       versionSnapshots.find((v) => v.versionLabel === acc.activeVersionLabel) ||
-      versionSnapshots[versionSnapshots.length - 1];
+      (versionSnapshots.length > 0
+        ? versionSnapshots[versionSnapshots.length - 1]
+        : undefined);
 
     return {
       id: acc.id,
@@ -4018,8 +4035,8 @@ export async function getUserAccords(uid: string): Promise<AccordDefinition[]> {
       activeVersionLabel:
         acc.activeVersionLabel || activeVerSnap?.versionLabel || 'V1',
       items: activeVerSnap
-        ? activeVerSnap.items
-        : safeParseObject(acc.itemsJson, []),
+        ? (Array.isArray(activeVerSnap.items) ? activeVerSnap.items : [])
+        : safeParseArrayJson<AccordItem>(acc.itemsJson),
       olfactoryProfile: safeParseObject(acc.olfactoryProfileJson, {}),
       versions: versionSnapshots,
     };
