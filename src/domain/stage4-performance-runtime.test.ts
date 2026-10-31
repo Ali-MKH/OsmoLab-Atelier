@@ -93,6 +93,8 @@ describe('Stage 4 — Performance, Bounded Pagination, Focused Repositories & Pr
 
     const totalCatalogMaterials = getMemoryGlobalCatalogCount();
     assert.equal(totalCatalogMaterials, 815);
+    assert.equal(page1.totalCatalogMaterials, 815);
+    assert.equal(page2.totalCatalogMaterials, 815);
     assert.equal(page1.total, 815);
     assert.equal(page2.total, 815);
     assert.ok(page1.materials.length <= 50 && page1.materials.length > 0);
@@ -101,8 +103,8 @@ describe('Stage 4 — Performance, Bounded Pagination, Focused Repositories & Pr
     assert.equal(page1.offset, 0);
     assert.equal(page2.limit, 50);
     assert.equal(page2.offset, 50);
-    assert.equal(page1.offset + page1.materials.length < page1.total, true);
-    assert.equal(page2.offset + page2.materials.length < page2.total, true);
+    assert.equal(page1.hasMore, true);
+    assert.equal(page2.hasMore, true);
 
     const page1Ids = new Set(page1.materials.map((m) => m.id));
     for (const mat of page2.materials) {
@@ -119,9 +121,10 @@ describe('Stage 4 — Performance, Bounded Pagination, Focused Repositories & Pr
       limit: 50,
       offset: 800,
     });
+    assert.equal(tailPage.totalCatalogMaterials, 815);
     assert.equal(tailPage.total, 815);
     assert.equal(tailPage.materials.length, 15);
-    assert.equal(tailPage.offset + tailPage.materials.length < tailPage.total, false);
+    assert.equal(tailPage.hasMore, false);
   });
 
   it('returns lightweight bootstrap metadata without full materials or regulatoryLimits arrays', async () => {

@@ -1,4 +1,5 @@
 import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 /**
  * Stage 3 & Performance Patch architectural rules:
@@ -132,9 +133,6 @@ export default [
   },
   {
     files: ['**/*.ts', '**/*.tsx'],
-    linterOptions: {
-      reportUnusedDisableDirectives: 'off',
-    },
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 'latest',
@@ -146,23 +144,8 @@ export default [
       },
     },
     plugins: {
+      '@typescript-eslint': tsPlugin,
       osmolab: osmolabArchitecturePlugin,
-      '@typescript-eslint': {
-        rules: {
-          'no-explicit-any': {
-            meta: {
-              type: 'suggestion',
-              docs: {
-                description: 'Disallow the any type',
-              },
-              schema: [],
-            },
-            create() {
-              return {};
-            },
-          },
-        },
-      },
     },
     rules: {
       'no-debugger': 'error',
