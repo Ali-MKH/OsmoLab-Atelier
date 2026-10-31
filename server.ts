@@ -55,7 +55,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
-dotenv.config({ path: path.join(__dirname, '.env.example'), override: false });
 
 // Sliding-window API rate limiter (protects against brute-force & Denial-of-Wallet)
 const rateLimitBuckets = new Map<string, { count: number; resetAtMs: number }>();
