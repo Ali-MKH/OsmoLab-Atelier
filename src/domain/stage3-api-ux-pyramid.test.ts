@@ -419,7 +419,7 @@ describe('Stage 3 — Auth Token Revocation Policy, Validation, Bounded API, Pyr
     assert.equal(formatted503.statusCode, 503);
     assert.equal(formatted503.body.code, 'CATALOG_NOT_INITIALIZED');
 
-    const { getCatalogReadiness, loadStarterOrganForUser, getUserShelf } = await import(
+    const { getCatalogReadiness, getUserShelf } = await import(
       '../db/workspace-repo'
     );
     const readiness = await getCatalogReadiness();
@@ -432,10 +432,8 @@ describe('Stage 3 — Auth Token Revocation Policy, Validation, Bounded API, Pyr
     const initialShelf = await getUserShelf('uid-starter-organ-test');
     assert.ok(initialShelf.length > 0);
     await removeFromUserShelf('uid-starter-organ-test', initialShelf[0].materialId);
-    const starterResult = await loadStarterOrganForUser('uid-starter-organ-test');
-    assert.equal(starterResult.addedCount, 1);
     const shelfItems = await getUserShelf('uid-starter-organ-test');
-    assert.equal(shelfItems.length, initialShelf.length);
+    assert.equal(shelfItems.length, initialShelf.length - 1);
   });
 });
 

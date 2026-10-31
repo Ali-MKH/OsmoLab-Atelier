@@ -417,6 +417,8 @@ export const FormulaLabView: React.FC<FormulaLabViewProps> = ({
         euViolationCount: 0,
         euAllergenDeclarationCount: 0,
         aggregatedAllergens: [],
+        declarableAllergens: [],
+        hasMissingConstituentPercentages: false,
       };
     }
     return evaluateFormulaSafety(
