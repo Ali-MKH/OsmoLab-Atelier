@@ -48,3 +48,6 @@ Firebase Authentication (Client)
    - `express.json({ limit: '256kb' })` caps request payload size.
    - Prototype pollution keys (`__proto__`, `constructor`, `prototype`) and nesting depths > 8 are rejected by `assertNoPrototypePollution`.
    - `/api/*` responses set `Cache-Control: no-store, no-cache, must-revalidate, private`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and enforce per-IP sliding-window rate limiting (`120 req / 60s`).
+
+6. **Continuous Integration & Persistence Verification**:
+   - GitHub Actions CI enforces reproducible installs (`npm ci`), strict TypeScript (`tsc --noEmit`), AST-parsed ESLint architectural rules (`osmolab/no-firestore-runtime`, `osmolab/no-seed-data-in-presentation`, `osmolab/no-hardcoded-pyramid-overrides`), memory-mode regression tests, and a real PostgreSQL 16 migration, 815-material catalog import, `/api/health/data`, and bounded `/api/catalog` smoke gate.

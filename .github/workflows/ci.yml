@@ -8,28 +8,55 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, Lint, Catalog Import, Test & Build
+    name: Static Gates, Memory Suite & Real PostgreSQL Smoke
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: osmolab_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d osmolab_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      PERSISTENCE_MODE: memory
-      NODE_ENV: test
+      SQL_HOST: 127.0.0.1
+      SQL_PORT: 5432
+      SQL_DB_NAME: osmolab_ci
+      SQL_USER: postgres
+      SQL_PASSWORD: postgres
+      SQL_ADMIN_USER: postgres
+      SQL_ADMIN_PASSWORD: postgres
+      CATALOG_AUTO_BOOTSTRAP: 'true'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      - name: Set up Node.js 24.12.0
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.12.0'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install dependencies (reproducible lockfile)
         run: npm ci
 
-      - name: Verify canonical v1.1 catalog import & seed integrity
-        run: npm run catalog:import
+      - name: Verify canonical v1.1 catalog import (memory mode = 815)
+        env:
+          PERSISTENCE_MODE: memory
+          NODE_ENV: test
+        run: |
+          OUT=$(PERSISTENCE_MODE=memory npm run catalog:import)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'totalCatalogMaterials=815'
 
       - name: Run strict TypeScript typecheck
         run: npm run typecheck
@@ -37,8 +64,99 @@ jobs:
       - name: Run ESLint architectural & code lint
         run: npm run lint
 
-      - name: Run unit & integration test suite
+      - name: Run unit & integration test suite (memory mode)
+        env:
+          PERSISTENCE_MODE: memory
+          NODE_ENV: test
         run: npm test
 
       - name: Build production frontend bundle
         run: npm run build
+
+      - name: Run fresh PostgreSQL migrations
+        env:
+          PERSISTENCE_MODE: postgres
+        run: npm run db:migrate
+
+      - name: Import canonical v1.1 catalog into PostgreSQL (815 materials)
+        env:
+          PERSISTENCE_MODE: postgres
+        run: |
+          OUT=$(PERSISTENCE_MODE=postgres npm run catalog:import)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'totalCatalogMaterials=815'
+
+      - name: Real PostgreSQL server health & bounded catalog API smoke
+        env:
+          PERSISTENCE_MODE: postgres
+          NODE_ENV: development
+        run: |
+          set -euo pipefail
+          npx tsx server.ts > /tmp/osmolab-ci-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health/data > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          node -e '
+            (async () => {
+              const healthRes = await fetch("http://127.0.0.1:3000/api/health/data");
+              if (healthRes.status !== 200) {
+                throw new Error(`Expected /api/health/data HTTP 200, got ${healthRes.status}`);
+              }
+              const health = await healthRes.json();
+              console.log("/api/health/data:", JSON.stringify(health));
+              if (health.persistenceMode !== "postgres") {
+                throw new Error(`Expected persistenceMode=postgres, got ${health.persistenceMode}`);
+              }
+              if (health.databaseReady !== true) {
+                throw new Error(`Expected databaseReady=true, got ${health.databaseReady}`);
+              }
+              if (health.catalogReady !== true) {
+                throw new Error(`Expected catalogReady=true, got ${health.catalogReady}`);
+              }
+              if (health.catalogCount !== 815) {
+                throw new Error(`Expected catalogCount=815, got ${health.catalogCount}`);
+              }
+
+              const cat0Res = await fetch("http://127.0.0.1:3000/api/catalog?limit=1&offset=0");
+              if (cat0Res.status !== 200) {
+                throw new Error(`Expected /api/catalog?limit=1&offset=0 HTTP 200, got ${cat0Res.status}`);
+              }
+              const cat0 = await cat0Res.json();
+              if (!Array.isArray(cat0.items) || cat0.items.length !== 1) {
+                throw new Error(`Expected items.length=1 at offset 0, got ${cat0.items?.length}`);
+              }
+              if (cat0.total !== 815 || cat0.limit !== 1 || cat0.offset !== 0 || cat0.hasMore !== true) {
+                throw new Error(`Unexpected offset 0 metadata: ${JSON.stringify({ total: cat0.total, limit: cat0.limit, offset: cat0.offset, hasMore: cat0.hasMore })}`);
+              }
+
+              const cat50Res = await fetch("http://127.0.0.1:3000/api/catalog?limit=1&offset=50");
+              if (cat50Res.status !== 200) {
+                throw new Error(`Expected /api/catalog?limit=1&offset=50 HTTP 200, got ${cat50Res.status}`);
+              }
+              const cat50 = await cat50Res.json();
+              if (!Array.isArray(cat50.items) || cat50.items.length !== 1) {
+                throw new Error(`Expected items.length=1 at offset 50, got ${cat50.items?.length}`);
+              }
+              if (cat50.total !== 815) {
+                throw new Error(`Expected total=815 at offset 50, got ${cat50.total}`);
+              }
+              if (cat50.items[0].id === cat0.items[0].id) {
+                throw new Error(`Offset 50 item id (${cat50.items[0].id}) must differ from offset 0 item id (${cat0.items[0].id})`);
+              }
+              console.log("PostgreSQL smoke passed:", {
+                offset0Id: cat0.items[0].id,
+                offset50Id: cat50.items[0].id,
+                total: cat0.total,
+              });
+            })().catch((err) => {
+              console.error(err);
+              process.exit(1);
+            });
+          '

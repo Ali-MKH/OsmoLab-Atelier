@@ -132,6 +132,9 @@ export default [
   },
   {
     files: ['**/*.ts', '**/*.tsx'],
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 'latest',
@@ -144,11 +147,27 @@ export default [
     },
     plugins: {
       osmolab: osmolabArchitecturePlugin,
+      '@typescript-eslint': {
+        rules: {
+          'no-explicit-any': {
+            meta: {
+              type: 'suggestion',
+              docs: {
+                description: 'Disallow the any type',
+              },
+              schema: [],
+            },
+            create() {
+              return {};
+            },
+          },
+        },
+      },
     },
     rules: {
       'no-debugger': 'error',
       'osmolab/no-firestore-runtime': 'error',
-      'osmolab/no-seed-data-in-presentation': 'off',
+      'osmolab/no-seed-data-in-presentation': 'error',
       'osmolab/no-hardcoded-pyramid-overrides': 'error',
     },
   },

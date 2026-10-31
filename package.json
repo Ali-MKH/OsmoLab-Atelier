@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.12.0"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.ts",
@@ -11,6 +14,7 @@
     "clean": "rm -rf dist server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "db:migrate": "drizzle-kit migrate --config=src/db/drizzle.config.ts",
     "catalog:import": "tsx scripts/import-catalog-v1_1.ts",
     "test": "tsx --test src/domain/*.test.ts"
   },
@@ -39,6 +43,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@typescript-eslint/parser": "^8.72.0",
     "autoprefixer": "^10.4.21",
     "drizzle-kit": "^0.31.11",
     "esbuild": "^0.28.0",

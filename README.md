@@ -28,7 +28,7 @@ OsmoLab supports two explicit persistence modes via the `PERSISTENCE_MODE` envir
 | **PostgreSQL (Production Default)** | `PERSISTENCE_MODE=postgres` | Connects to PostgreSQL (`SQL_HOST`, `SQL_DB_NAME`, `SQL_USER`, `SQL_PASSWORD`). Fails fast on startup if `NODE_ENV=production` and PostgreSQL is unreachable—never silently falls back to volatile memory in production. |
 | **In-Memory Store (Local / CI Test)** | `PERSISTENCE_MODE=memory` | Uses an isolated, deterministic in-memory relational store seeded with the canonical 815-material v1.1 catalog. Ideal for offline evaluation, unit tests, and GitHub Actions CI. |
 
-Check runtime persistence health at any time via `GET /api/health`.
+Check runtime persistence health at any time via `GET /api/health/data`.
 
 ---
 
@@ -120,7 +120,7 @@ Automated tests cover:
 - Formula math, dilution scaling, accord expansion, IFRA/EU compliance engine, and `LOOKUP_REQUIRED` truthfulness (`stage2-regulatory-formula.test.ts`, `formula-engine.test.ts`)
 - Auth token verification & revocation policy (`checkRevoked: true`), runtime schema validation, standardized error contracts, bounded catalog queries, and v1.1 pyramid metadata (`stage3-api-ux-pyramid.test.ts`)
 
-GitHub Actions CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run catalog:import`, `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build` on every pull request and push to `main`.
+GitHub Actions CI (`.github/workflows/ci.yml`) runs on Node.js 24.12.0 with `npm ci` and verifies both memory-mode deterministic validation (`PERSISTENCE_MODE=memory npm run catalog:import`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`) and a real PostgreSQL migration/catalog/server smoke (`npm run db:migrate`, `PERSISTENCE_MODE=postgres npm run catalog:import`, `GET /api/health/data`, and bounded `GET /api/catalog` queries) on every pull request and push to `main`.
 
 ---
 
