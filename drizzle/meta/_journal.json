@@ -8,6 +8,20 @@
       "when": 1793172821093,
       "tag": "0000_brave_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793172821094,
+      "tag": "0001_stage1_expand_and_migrate_catalog_shelf",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793172821095,
+      "tag": "0002_stage2_regulatory_and_version_integrity",
+      "breakpoints": true
     }
   ]
 }

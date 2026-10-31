@@ -26,16 +26,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    env:
-      SQL_HOST: 127.0.0.1
-      SQL_PORT: 5432
-      SQL_DB_NAME: osmolab_ci
-      SQL_USER: postgres
-      SQL_PASSWORD: postgres
-      SQL_ADMIN_USER: postgres
-      SQL_ADMIN_PASSWORD: postgres
-      CATALOG_AUTO_BOOTSTRAP: 'true'
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,11 +66,27 @@ jobs:
       - name: Run fresh PostgreSQL migrations
         env:
           PERSISTENCE_MODE: postgres
+          SQL_HOST: 127.0.0.1
+          SQL_PORT: 5432
+          SQL_DB_NAME: osmolab_ci
+          SQL_USER: postgres
+          SQL_PASSWORD: postgres
+          SQL_ADMIN_USER: postgres
+          SQL_ADMIN_PASSWORD: postgres
+          CATALOG_AUTO_BOOTSTRAP: 'true'
         run: npm run db:migrate
 
       - name: Import canonical v1.1 catalog into PostgreSQL (815 materials)
         env:
           PERSISTENCE_MODE: postgres
+          SQL_HOST: 127.0.0.1
+          SQL_PORT: 5432
+          SQL_DB_NAME: osmolab_ci
+          SQL_USER: postgres
+          SQL_PASSWORD: postgres
+          SQL_ADMIN_USER: postgres
+          SQL_ADMIN_PASSWORD: postgres
+          CATALOG_AUTO_BOOTSTRAP: 'true'
         run: |
           OUT=$(PERSISTENCE_MODE=postgres npm run catalog:import)
           echo "$OUT"
@@ -90,6 +96,14 @@ jobs:
         env:
           PERSISTENCE_MODE: postgres
           NODE_ENV: development
+          SQL_HOST: 127.0.0.1
+          SQL_PORT: 5432
+          SQL_DB_NAME: osmolab_ci
+          SQL_USER: postgres
+          SQL_PASSWORD: postgres
+          SQL_ADMIN_USER: postgres
+          SQL_ADMIN_PASSWORD: postgres
+          CATALOG_AUTO_BOOTSTRAP: 'true'
         run: |
           set -euo pipefail
           npx tsx server.ts > /tmp/osmolab-ci-server.log 2>&1 &
