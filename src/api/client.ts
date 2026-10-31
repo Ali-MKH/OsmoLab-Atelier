@@ -155,10 +155,26 @@ export interface SaveScentMemoryResponse {
 
 async function parseJsonResponse<T>(res: Response): Promise<T> {
   let body: Record<string, unknown> = {};
+  let parseFailed = false;
   try {
     body = (await res.json()) as Record<string, unknown>;
   } catch {
+    parseFailed = true;
     body = {};
+  }
+
+  if (parseFailed) {
+    if (res.ok) {
+      const err = new Error(
+        `Invalid JSON received from server (status ${res.status}): unexpected response body.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'INVALID_JSON_RESPONSE';
+      err.details = [
+        { field: 'body', message: 'Failed to parse JSON response', code: 'PARSE_ERROR' },
+      ];
+      throw err;
+    }
   }
 
   if (!res.ok) {
@@ -176,6 +192,161 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   }
 
   return body as T;
+}
+
+export function validateCatalogResponse(
+  raw: unknown,
+  requestedLimit?: number,
+  requestedOffset?: number
+): CatalogListResponse {
+  if (!raw || typeof raw !== 'object') {
+    const err = new Error(
+      'Malformed catalog response — missing or invalid body.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [{ field: 'body', message: 'Expected object', code: 'INVALID_SHAPE' }];
+    throw err;
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  if (!Array.isArray(obj.items)) {
+    const err = new Error(
+      'Malformed catalog response — items must be an array.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [
+      { field: 'items', message: 'Expected array of materials', code: 'INVALID_COLLECTION' },
+    ];
+    throw err;
+  }
+
+  for (let i = 0; i < obj.items.length; i++) {
+    const it = obj.items[i];
+    if (!it || typeof it !== 'object') {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} is not an object.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}]`, message: 'Expected material object', code: 'INVALID_ITEM' },
+      ];
+      throw err;
+    }
+    const mat = it as Record<string, unknown>;
+    if (typeof mat.id !== 'number' || !Number.isInteger(mat.id) || mat.id <= 0) {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} has invalid id: ${String(mat.id)}`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}].id`, message: 'Expected positive integer id', code: 'INVALID_ID' },
+      ];
+      throw err;
+    }
+    if (typeof mat.name !== 'string' || mat.name.trim().length === 0) {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} (id ${mat.id}) has invalid name.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}].name`, message: 'Expected non-empty string', code: 'INVALID_NAME' },
+      ];
+      throw err;
+    }
+    if (typeof mat.primaryFamily !== 'string' || mat.primaryFamily.trim().length === 0) {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} (id ${mat.id}) has invalid primaryFamily.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}].primaryFamily`, message: 'Expected non-empty string', code: 'INVALID_FAMILY' },
+      ];
+      throw err;
+    }
+    if (typeof mat.volatility !== 'string' || mat.volatility.trim().length === 0) {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} (id ${mat.id}) has invalid volatility.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}].volatility`, message: 'Expected non-empty string', code: 'INVALID_VOLATILITY' },
+      ];
+      throw err;
+    }
+    if (typeof mat.casNumber !== 'string') {
+      const err = new Error(
+        `Malformed catalog response — item at index ${i} (id ${mat.id}) has invalid casNumber.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_CATALOG_RESPONSE';
+      err.details = [
+        { field: `items[${i}].casNumber`, message: 'Expected string', code: 'INVALID_CAS' },
+      ];
+      throw err;
+    }
+  }
+
+  if (typeof obj.total !== 'number' || !Number.isInteger(obj.total) || obj.total < 0) {
+    const err = new Error(
+      'Malformed catalog response — total must be a finite non-negative integer.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [{ field: 'total', message: 'Expected non-negative integer', code: 'INVALID_TOTAL' }];
+    throw err;
+  }
+
+  if (typeof obj.limit !== 'number' || !Number.isInteger(obj.limit) || obj.limit <= 0) {
+    const err = new Error(
+      'Malformed catalog response — limit must be a positive integer.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [{ field: 'limit', message: 'Expected positive integer', code: 'INVALID_LIMIT' }];
+    throw err;
+  }
+
+  if (typeof obj.offset !== 'number' || !Number.isInteger(obj.offset) || obj.offset < 0) {
+    const err = new Error(
+      'Malformed catalog response — offset must be a finite non-negative integer.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [{ field: 'offset', message: 'Expected non-negative integer', code: 'INVALID_OFFSET' }];
+    throw err;
+  }
+
+  if (typeof obj.hasMore !== 'boolean') {
+    const err = new Error(
+      'Malformed catalog response — hasMore must be a boolean.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [{ field: 'hasMore', message: 'Expected boolean', code: 'INVALID_HAS_MORE' }];
+    throw err;
+  }
+
+  if (obj.items.length > obj.limit) {
+    const err = new Error(
+      `Malformed catalog response — received ${obj.items.length} items exceeding limit of ${obj.limit}.`
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_CATALOG_RESPONSE';
+    err.details = [
+      { field: 'items', message: `items length ${obj.items.length} exceeds limit ${obj.limit}`, code: 'LIMIT_EXCEEDED' },
+    ];
+    throw err;
+  }
+
+  return raw as CatalogListResponse;
 }
 
 export async function fetchBootstrapApi(
@@ -202,15 +373,18 @@ export async function fetchCatalogApi(
   if (params.shelfOnly) query.set('shelfOnly', 'true');
   if (params.workbenchOnly) query.set('workbenchOnly', 'true');
   if (params.includeRegulatory) query.set('includeRegulatory', 'true');
-  query.set('limit', String(params.limit ?? 50));
-  query.set('offset', String(params.offset ?? 0));
+  const limitVal = params.limit ?? 50;
+  const offsetVal = params.offset ?? 0;
+  query.set('limit', String(limitVal));
+  query.set('offset', String(offsetVal));
 
   const qs = query.toString();
   const res = await fetch(`/api/catalog${qs ? `?${qs}` : ''}`, {
     headers,
     signal,
   });
-  return parseJsonResponse<CatalogListResponse>(res);
+  const raw = await parseJsonResponse<unknown>(res);
+  return validateCatalogResponse(raw, limitVal, offsetVal);
 }
 
 export async function fetchMaterialDetailApi(
@@ -236,6 +410,20 @@ export function validateRegulatoryDossierResponse(
 
   const obj = raw as Record<string, unknown>;
 
+  if (obj.regulatoryLimit !== undefined && obj.regulatoryLimit !== null) {
+    if (typeof obj.regulatoryLimit !== 'object' || Array.isArray(obj.regulatoryLimit)) {
+      const err = new Error(
+        'Malformed regulatory dossier — regulatoryLimit must be an object or null.'
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_REGULATORY_DOSSIER';
+      err.details = [
+        { field: 'regulatoryLimit', message: 'Expected object or null', code: 'INVALID_LIMIT' },
+      ];
+      throw err;
+    }
+  }
+
   if (!Array.isArray(obj.regulatoryRecords)) {
     const err = new Error(
       'Malformed regulatory dossier — regulatoryRecords must be an array.'
@@ -248,6 +436,33 @@ export function validateRegulatoryDossierResponse(
     throw err;
   }
 
+  for (let i = 0; i < obj.regulatoryRecords.length; i++) {
+    const rec = obj.regulatoryRecords[i];
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) {
+      const err = new Error(
+        `Malformed regulatory dossier — regulatoryRecord at index ${i} is not an object.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_REGULATORY_DOSSIER';
+      err.details = [
+        { field: `regulatoryRecords[${i}]`, message: 'Expected object', code: 'INVALID_RECORD' },
+      ];
+      throw err;
+    }
+    const r = rec as Record<string, unknown>;
+    if (typeof r.authority !== 'string' || r.authority.trim().length === 0) {
+      const err = new Error(
+        `Malformed regulatory dossier — regulatoryRecord at index ${i} missing authority.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_REGULATORY_DOSSIER';
+      err.details = [
+        { field: `regulatoryRecords[${i}].authority`, message: 'Expected non-empty string', code: 'INVALID_AUTHORITY' },
+      ];
+      throw err;
+    }
+  }
+
   if (!Array.isArray(obj.constituents)) {
     const err = new Error(
       'Malformed regulatory dossier — constituents must be an array.'
@@ -258,6 +473,34 @@ export function validateRegulatoryDossierResponse(
       { field: 'constituents', message: 'Expected array', code: 'INVALID_COLLECTION' },
     ];
     throw err;
+  }
+
+  for (let i = 0; i < obj.constituents.length; i++) {
+    const c = obj.constituents[i];
+    if (!c || typeof c !== 'object' || Array.isArray(c)) {
+      const err = new Error(
+        `Malformed regulatory dossier — constituent at index ${i} is not an object.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_REGULATORY_DOSSIER';
+      err.details = [
+        { field: `constituents[${i}]`, message: 'Expected object', code: 'INVALID_CONSTITUENT' },
+      ];
+      throw err;
+    }
+    const con = c as Record<string, unknown>;
+    const cName = con.constituentName ?? con.name;
+    if (typeof cName !== 'string' || cName.trim().length === 0) {
+      const err = new Error(
+        `Malformed regulatory dossier — constituent at index ${i} missing constituentName.`
+      ) as StandardizedClientError;
+      err.statusCode = 502;
+      err.code = 'MALFORMED_REGULATORY_DOSSIER';
+      err.details = [
+        { field: `constituents[${i}].constituentName`, message: 'Expected non-empty string', code: 'INVALID_CONSTITUENT_NAME' },
+      ];
+      throw err;
+    }
   }
 
   return raw as MaterialRegulatoryDossier;

@@ -4,7 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
-import { requireAuth, type AuthRequest } from './src/middleware/auth.ts';
+import {
+  requireAuth,
+  verifyBearerTokenWithPolicy,
+  type AuthRequest,
+} from './src/middleware/auth.ts';
 import {
   assertStrictTenantPayload,
   OSMOLAB_SECURITY_CONTROLS,
@@ -190,6 +194,33 @@ async function startServer() {
       const validated = validateCatalogQuery(
         req.query as Record<string, unknown>
       );
+
+      let authUid: string | undefined;
+      let authEmail: string | undefined;
+
+      if (validated.shelfOnly || validated.workbenchOnly) {
+        const authOutcome = await verifyBearerTokenWithPolicy(
+          req.headers.authorization
+        );
+        if (!authOutcome.ok) {
+          return res.status(authOutcome.statusCode).json({
+            error: authOutcome.error,
+            code: authOutcome.code,
+            details: [],
+          });
+        }
+        authUid = authOutcome.workspaceUid;
+        authEmail = authOutcome.workspaceEmail;
+      } else if (req.headers.authorization) {
+        const authOutcome = await verifyBearerTokenWithPolicy(
+          req.headers.authorization
+        );
+        if (authOutcome.ok) {
+          authUid = authOutcome.workspaceUid;
+          authEmail = authOutcome.workspaceEmail;
+        }
+      }
+
       const result = await queryCatalogMaterials({
         q: validated.q,
         search: validated.search,
@@ -202,6 +233,8 @@ async function startServer() {
         includeRegulatory: false,
         limit: validated.limit,
         offset: validated.offset,
+        uid: authUid,
+        email: authEmail,
       });
       res.json({
         items: result.items,

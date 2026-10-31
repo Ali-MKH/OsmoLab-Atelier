@@ -2941,8 +2941,32 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                       )}
                     </div>
                   </div>
+                ) : searchQuery.trim().length > 0 ||
+                  familyFilter !== 'All' ||
+                  originFilter !== 'All' ||
+                  pyramidFilter !== 'ALL' ? (
+                  <p>
+                    No materials match current filters
+                    {searchQuery ? ` ("${searchQuery}")` : ''}.
+                  </p>
                 ) : (
-                  <p>No materials match current filters{searchQuery ? ` ("${searchQuery}")` : ''}.</p>
+                  <div className="space-y-2.5">
+                    <p className="font-semibold text-slate-300">
+                      Raw materials catalog is empty or uninitialized.
+                    </p>
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      No catalog materials were returned from the reference library. Run npm run catalog:import or retry loading.
+                    </p>
+                    {onRetryCatalog && (
+                      <button
+                        type="button"
+                        onClick={onRetryCatalog}
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors mt-2"
+                      >
+                        Retry Catalog Load
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (

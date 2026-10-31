@@ -755,15 +755,29 @@ export default function App() {
       setUserShelfItems(shelfItems);
       if (shelfItems.length > 0) {
         try {
-          const shelfCatalog = await fetchCatalogPageApi(
-            { shelfOnly: true, limit: 200, offset: 0 },
-            headers
-          );
+          const allShelfMaterials: RawMaterial[] = [];
+          let currentOffset = 0;
+          const pageSize = 100;
+          let hasMorePages = true;
+
+          while (hasMorePages) {
+            const pageRes = await fetchCatalogPageApi(
+              { shelfOnly: true, limit: pageSize, offset: currentOffset },
+              headers
+            );
+            allShelfMaterials.push(...pageRes.items);
+            currentOffset += pageRes.items.length;
+            hasMorePages =
+              pageRes.hasMore &&
+              allShelfMaterials.length < pageRes.total &&
+              pageRes.items.length > 0;
+          }
+
           const shelfById = new Map<number, UserShelfItem>();
           for (const item of shelfItems) {
             shelfById.set(item.materialId, item);
           }
-          const shelfMats: RawMaterial[] = shelfCatalog.items.map((mat) => {
+          const shelfMats: RawMaterial[] = allShelfMaterials.map((mat) => {
             const item = shelfById.get(mat.id);
             return {
               ...mat,
@@ -785,13 +799,15 @@ export default function App() {
             };
           });
           setMaterials(shelfMats);
+          setShelfLoadState('ready');
         } catch (err) {
           console.warn('Failed to hydrate shelf materials slice:', err);
+          setShelfLoadState('error');
         }
       } else {
         setMaterials([]);
+        setShelfLoadState('ready');
       }
-      setShelfLoadState('ready');
     } else {
       console.warn('Failed to load user shelf:', shelfResult.reason);
       setShelfLoadState('error');

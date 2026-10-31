@@ -149,13 +149,13 @@ export const AutonomousMaterialCatalogView: React.FC<
           return;
         }
 
-        const items = Array.isArray(res.items) ? res.items : [];
+        const items = res.items;
         setCatalogSlice((prev) =>
           append ? deduplicateMaterialsById([...prev, ...items]) : deduplicateMaterialsById(items)
         );
-        setTotalCount(typeof res.total === 'number' ? res.total : items.length);
+        setTotalCount(res.total);
         setOffset(targetOffset);
-        setHasMore(Boolean(res.hasMore));
+        setHasMore(res.hasMore);
         setLoadState('ready');
         setCatalogLoadMoreError(null);
       } catch (err: unknown) {
