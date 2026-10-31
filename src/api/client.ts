@@ -221,12 +221,55 @@ export async function fetchMaterialDetailApi(
   return parseJsonResponse<MaterialDetailResponse>(res);
 }
 
+export function validateRegulatoryDossierResponse(
+  raw: unknown
+): MaterialRegulatoryDossier {
+  if (!raw || typeof raw !== 'object') {
+    const err = new Error(
+      'Malformed regulatory dossier response — missing or invalid body.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_REGULATORY_DOSSIER';
+    err.details = [{ field: 'body', message: 'Expected object', code: 'INVALID_SHAPE' }];
+    throw err;
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  if (!Array.isArray(obj.regulatoryRecords)) {
+    const err = new Error(
+      'Malformed regulatory dossier — regulatoryRecords must be an array.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_REGULATORY_DOSSIER';
+    err.details = [
+      { field: 'regulatoryRecords', message: 'Expected array', code: 'INVALID_COLLECTION' },
+    ];
+    throw err;
+  }
+
+  if (!Array.isArray(obj.constituents)) {
+    const err = new Error(
+      'Malformed regulatory dossier — constituents must be an array.'
+    ) as StandardizedClientError;
+    err.statusCode = 502;
+    err.code = 'MALFORMED_REGULATORY_DOSSIER';
+    err.details = [
+      { field: 'constituents', message: 'Expected array', code: 'INVALID_COLLECTION' },
+    ];
+    throw err;
+  }
+
+  return raw as MaterialRegulatoryDossier;
+}
+
 export async function fetchMaterialRegulatoryDossierApi(
   materialId: number,
   headers: Record<string, string> = {}
 ): Promise<MaterialRegulatoryDossier> {
   const res = await fetch(`/api/catalog/${materialId}/regulatory`, { headers });
-  return parseJsonResponse<MaterialRegulatoryDossier>(res);
+  const raw = await parseJsonResponse<unknown>(res);
+  return validateRegulatoryDossierResponse(raw);
 }
 
 export async function fetchUserShelfApi(

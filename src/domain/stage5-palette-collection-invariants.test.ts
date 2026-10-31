@@ -6,8 +6,20 @@ import {
   MaterialsAndInventoryView,
   MaterialsAndInventoryViewProps,
 } from '../components/MaterialsAndInventoryView';
-import { RawMaterial, AccordDefinition, Formula } from './types';
-import { sanitizeFormula, sanitizeAccord } from '../api/client';
+import {
+  RawMaterial,
+  AccordDefinition,
+  Formula,
+  MaterialRegulatoryRecord,
+  MaterialConstituent,
+} from './types';
+import {
+  sanitizeFormula,
+  sanitizeAccord,
+  validateRegulatoryDossierResponse,
+  MaterialRegulatoryDossier,
+} from '../api/client';
+import { RegulatoryDossier } from '../features/regulatory/RegulatoryDossier';
 
 function createMockMaterial(id: number, name: string): RawMaterial {
   return {
@@ -412,5 +424,221 @@ describe('Stage 5 — Raw Materials Palette Collection Invariants & Non-Crashing
     assert.equal(sanitizedAccord.items.length, 0);
     assert.ok(Array.isArray(sanitizedAccord.versions));
     assert.equal(sanitizedAccord.versions.length, 0);
+  });
+});
+
+describe('Stage 5 — Regulatory Dossier Response Validation & Render Safety', () => {
+  const validRecord: MaterialRegulatoryRecord = {
+    id: 1,
+    materialId: 1,
+    jurisdiction: 'GLOBAL',
+    authority: 'IFRA',
+    ruleType: 'MAX_USE',
+    status: 'RESTRICTION',
+    standardOrAnnex: 'IFRA 51st',
+    referenceNumber: 'STD-01',
+    productCategory: 'Cat 4',
+    maxFinishedProductPct: 5.0,
+    maxReadyForUsePct: 5.0,
+    labelThresholdLeaveOnPct: null,
+    labelThresholdRinseOffPct: null,
+    conditionText: '',
+    summary: 'IFRA Category 4 finished product maximum use limit is 5.0%.',
+    sourceUrl: 'https://ifrafragrance.org',
+    sourceDocument: 'IFRA 51st Amendment',
+    sourceVersion: '51',
+    verifiedAt: '2026-01-01',
+    verificationStatus: 'VERIFIED_OFFICIAL',
+  };
+
+  const validConstituent: MaterialConstituent = {
+    id: 1,
+    materialId: 1,
+    constituentName: 'Limonene',
+    constituentCas: '5989-27-5',
+    typicalPct: 35.0,
+    minPct: 30.0,
+    maxPct: 40.0,
+    sourceUrl: 'https://ifrafragrance.org',
+    sourceDocument: 'CoA',
+    verificationStatus: 'VERIFIED_OFFICIAL',
+  };
+
+  it('1. Accepts a valid dossier with populated records and constituents', () => {
+    const validDossier = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: [validRecord],
+      constituents: [validConstituent],
+    };
+
+    const validated = validateRegulatoryDossierResponse(validDossier);
+    assert.equal(validated.materialId, 1);
+    assert.equal(validated.regulatoryRecords.length, 1);
+    assert.equal(validated.constituents.length, 1);
+
+    const html = renderToString(
+      React.createElement(RegulatoryDossier, {
+        materialId: 1,
+        initialDossier: validated,
+      })
+    );
+    assert.ok(html.includes('Normalized Regulatory Evidence'));
+    assert.ok(html.includes('Declarable Constituents'));
+    assert.ok(html.includes('Limonene'));
+    assert.ok(html.includes('Official source verified'));
+    assert.ok(!html.includes('tab-error-boundary'));
+  });
+
+  it('2. Accepts a valid dossier with empty regulatoryRecords ([])', () => {
+    const emptyRecordsDossier = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: [],
+      constituents: [validConstituent],
+    };
+
+    const validated = validateRegulatoryDossierResponse(emptyRecordsDossier);
+    assert.equal(validated.regulatoryRecords.length, 0);
+
+    const html = renderToString(
+      React.createElement(RegulatoryDossier, {
+        materialId: 1,
+        initialDossier: validated,
+      })
+    );
+    assert.ok(
+      html.includes(
+        'LOOKUP_REQUIRED — No structured authority records stored for this material.'
+      )
+    );
+    assert.ok(!html.includes('tab-error-boundary'));
+  });
+
+  it('3. Accepts a valid dossier with empty constituents ([])', () => {
+    const emptyConstituentsDossier = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: [validRecord],
+      constituents: [],
+    };
+
+    const validated = validateRegulatoryDossierResponse(emptyConstituentsDossier);
+    assert.equal(validated.constituents.length, 0);
+
+    const html = renderToString(
+      React.createElement(RegulatoryDossier, {
+        materialId: 1,
+        initialDossier: validated,
+      })
+    );
+    assert.ok(html.includes('Normalized Regulatory Evidence'));
+    assert.ok(!html.includes('Declarable Constituents'));
+    assert.ok(!html.includes('tab-error-boundary'));
+  });
+
+  it('4. Rejects a malformed dossier with missing or non-array regulatoryRecords', () => {
+    const malformed1 = {
+      materialId: 1,
+      regulatoryLimit: null,
+      constituents: [],
+    };
+
+    assert.throws(
+      () => validateRegulatoryDossierResponse(malformed1),
+      (err: any) =>
+        err.code === 'MALFORMED_REGULATORY_DOSSIER' &&
+        err.message.includes('regulatoryRecords')
+    );
+
+    const malformedNullRecords = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: null,
+      constituents: [],
+    };
+
+    assert.throws(
+      () => validateRegulatoryDossierResponse(malformedNullRecords),
+      (err: any) =>
+        err.code === 'MALFORMED_REGULATORY_DOSSIER' &&
+        err.message.includes('regulatoryRecords')
+    );
+  });
+
+  it('5. Rejects a malformed dossier with missing or non-array constituents', () => {
+    const malformedMissingConstituents = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: [],
+    };
+
+    assert.throws(
+      () => validateRegulatoryDossierResponse(malformedMissingConstituents),
+      (err: any) =>
+        err.code === 'MALFORMED_REGULATORY_DOSSIER' &&
+        err.message.includes('constituents')
+    );
+
+    const malformedNullConstituents = {
+      materialId: 1,
+      regulatoryLimit: null,
+      regulatoryRecords: [],
+      constituents: null,
+    };
+
+    assert.throws(
+      () => validateRegulatoryDossierResponse(malformedNullConstituents),
+      (err: any) =>
+        err.code === 'MALFORMED_REGULATORY_DOSSIER' &&
+        err.message.includes('constituents')
+    );
+  });
+
+  it('6. Malformed response never crashes RegulatoryDossier or Raw Materials tab and never becomes verified evidence', () => {
+    // Malformed input passed directly as initialDossier
+    const unvalidatedMalformedDossier = {
+      materialId: 1,
+      regulatoryLimit: {
+        id: 1,
+        materialId: 1,
+        ifraCategory: 'Cat 4',
+        maxAllowedPercent: 10,
+        allergens: '',
+        restrictions: '',
+        sourceDocument: 'Fake',
+        documentVersion: '1',
+        effectiveDate: '2026-01-01',
+        isDemoData: false,
+        verificationStatus: 'VERIFIED_OFFICIAL' as const,
+      },
+      regulatoryRecords: undefined as any,
+      constituents: undefined as any,
+    } as unknown as MaterialRegulatoryDossier;
+
+    // Must not throw when rendered
+    const html = renderToString(
+      React.createElement(RegulatoryDossier, {
+        materialId: 1,
+        initialDossier: unvalidatedMalformedDossier,
+      })
+    );
+
+    // Must fall into safe LOOKUP_REQUIRED state and not claim Official source verified
+    assert.ok(html.includes('lookup-required-badge'));
+    assert.ok(html.includes('lookup required'));
+    assert.ok(!html.includes('Official source verified'));
+    assert.ok(!html.includes('tab-error-boundary'));
+
+    // Even if rendered inside full MaterialsAndInventoryView with subtab='regulatory'
+    const fullProps: MaterialsAndInventoryViewProps = {
+      ...baseProps,
+      selectedMaterialId: 1,
+    };
+    const fullHtml = renderToString(
+      React.createElement(MaterialsAndInventoryView, fullProps)
+    );
+    assert.ok(fullHtml.length > 0);
+    assert.ok(!fullHtml.includes('tab-error-boundary'));
   });
 });

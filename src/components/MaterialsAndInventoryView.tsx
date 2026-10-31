@@ -3807,19 +3807,19 @@ export const MaterialsAndInventoryView: React.FC<MaterialsAndInventoryViewProps>
                       <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
                         <span className="text-slate-400 block text-[11px]">Personal Descriptors</span>
                         <span className="text-white font-medium mt-0.5 block">
-                          {selectedMemory.myPerception.join(' · ')}
+                          {(Array.isArray(selectedMemory.myPerception) ? selectedMemory.myPerception : []).join(' · ') || '—'}
                         </span>
                       </div>
                       <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
                         <span className="text-slate-400 block text-[11px]">Associated Memory</span>
                         <span className="text-slate-200 mt-0.5 block">
-                          {selectedMemory.associatedMemories.join(' · ')}
+                          {(Array.isArray(selectedMemory.associatedMemories) ? selectedMemory.associatedMemories : []).join(' · ') || '—'}
                         </span>
                       </div>
                       <div className="p-3 rounded bg-[#0B0E14] border border-slate-800">
                         <span className="text-slate-400 block text-[11px]">Emotional Tone</span>
                         <span className="text-emerald-300 mt-0.5 block">
-                          {selectedMemory.emotions.join(' · ')}
+                          {(Array.isArray(selectedMemory.emotions) ? selectedMemory.emotions : []).join(' · ') || '—'}
                         </span>
                       </div>
                     </div>
